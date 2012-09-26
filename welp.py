@@ -23,21 +23,6 @@
 
 import os,sys,re
 
-def findIt(HAYSTACK, COUNTER, NEEDLE_TYPE, NEEDLES):
-    global performed
-
-    # Read in line of the log file and look for all needles
-    for NEEDLE in NEEDLES:
-        # TODO - Use specific REGEX for the specific NEEDLE_TYPE
-        if re.search(NEEDLE, HAYSTACK, re.I):
-            log_entry = (NEEDLE_TYPE, NEEDLE)
-            performed.add(log_entry)
-
-            print "[+] Line %s contains the %s string: %s" % (COUNTER, NEEDLE_TYPE, NEEDLE) #DEBUG
-
-# Check how many command line args were passed and provide HELP msg if not right
-userlogfile=sys.argv[1]
-
 # Search the correct areas of the logs for each of these (REGEXs)
 # UserAgents show (in general) in Apache access.log not error.log
 USER_AGENT_STRINGS = ["dirbuster", "nikto", "netsparker", "acunetix", "w3af",\
@@ -61,8 +46,25 @@ IRC_COMMAND_LIST = ["Joined channel", "Port", "BOT", "Login", "flood",\
                     "VERSION"]
 
 
+def findIt(line, line_counter, search_cat, search_strings):
+    # Need to remove the "global" below and get it to work another way
+    global performed
+
+    # Read in line of the log file and look for all needles
+    for search_string in search_strings:
+        # TODO - Use specific REGEX for the specific NEEDLE_TYPE
+        if re.search(search_string, line, re.I):
+            log_entry = (search_cat, search_string)
+            performed.add(log_entry)
+
+            print "[+] Line %s contains the %s string: %s" % (line_counter, search_cat, search_string) #DEBUG
+
+# Check how many command line args were passed and provide HELP msg if not right
+user_log_file=sys.argv[1]
+
+
+
 # Parse the command arguments to see if the user passed in which tests they wanted done
-tests = {}
 # TODO - read in args for -t or --type and add those lists to the tests{}
 # For now, make a dictionary and lets do all tests
 tests = { 'useragent': USER_AGENT_STRINGS,
@@ -73,8 +75,8 @@ tests = { 'useragent': USER_AGENT_STRINGS,
 
 try:
     # Try to open the file specified
-    log_file = open(userlogfile,'r').readlines()
-    print "\n[!] Analyzing the file: ",userlogfile
+    log_file = open(user_log_file,'r').readlines()
+    print "\n[!] Analyzing the file: ",user_log_file
 
     # Create a SET for the attacks that we see
     performed = set([])       # This will get phased out as the more-robust attacker profile is implemented
