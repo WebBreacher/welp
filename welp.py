@@ -91,47 +91,48 @@ tests = { 'useragents': USER_AGENT_STRINGS,
 try:
     # Try to open the file specified
     log_file = open(user_log_file,'r').readlines()
-    print "\n[!] Analyzing the file: ",user_log_file
-
-    # Create a SET for the attacks that we see
-    matches = set([])       # This will get phased out as the more-robust attacker profile is implemented
-    # Create a SET for the information about the attacker <-- not sure this is right...just an array instead?
-    attacker = set([])        # This will be an array for the attacker: ip, useragents, dates, times (first/most recent), # attacks
-    line_counter = 1          # Counts the lines in the file
-
-
-    # Start pulling each line of the file then performs all analysis
-    for line in log_file:
-
-        # If the line is from 127.0.0.1|localhost, ignore it
-        if re.search('^((127.0.0.1)|localhost)', line):
-            continue
-
-        if 'httpmethods' in tests.keys():    # Test for HTTPMethods
-            findIt(line, line_counter, "HTTP Method", tests["httpmethods"])
-
-        if 'useragents' in tests.keys():      # Test for UserAgents
-            findIt(line, line_counter, "User Agent", tests["useragents"])
-
-        if 'sqlcommands' in tests.keys():      # Test for SQL Injection attacks
-            findIt(line, line_counter, "SQLi", tests["sqlcommands"])
-
-        if 'xsscommands' in tests.keys():      # Test for Cross Site Scripting attacks
-            findIt(line, line_counter, "XSS", tests["xsscommands"])
-
-        if 'irccommands' in tests.keys():      # Test for IRC commands
-            findIt(line, line_counter, "IRC", tests["irccommands"])
-
-	    line_counter += 1
-
-    # Show the Results
-    if len(matches) == 0:
-        print "[-] No strings found."
-    elif len(matches) > 0:
-        print "[+] Found the following Categories and Strings"
-        for k,v in sorted(matches):
-	    print "    [+] %s: %s" % (k, v)
 
 except (IOError) :
-    print "\n\nCan't read file ... Exiting."
+    print "\n\n[!!]Can't read file ... Exiting."
     sys.exit(0)
+
+print "\n[!] Analyzing the file: ",user_log_file
+
+# Create a SET for the attacks that we see
+matches = set([])       # This will get phased out as the more-robust attacker profile is implemented
+# Create a SET for the information about the attacker <-- not sure this is right...just an array instead?
+attacker = set([])        # This will be an array for the attacker: ip, useragents, dates, times (first/most recent), # attacks
+line_counter = 1          # Counts the lines in the file
+
+
+# Start pulling each line of the file then performs all analysis
+for line in log_file:
+
+    # If the line is from 127.0.0.1|localhost, ignore it
+    if re.search('^((127.0.0.1)|localhost)', line):
+        continue
+
+    if 'httpmethods' in tests.keys():    # Test for HTTPMethods
+        findIt(line, line_counter, "HTTP Method", tests["httpmethods"])
+
+    if 'useragents' in tests.keys():      # Test for UserAgents
+        findIt(line, line_counter, "User Agent", tests["useragents"])
+
+    if 'sqlcommands' in tests.keys():      # Test for SQL Injection attacks
+        findIt(line, line_counter, "SQLi", tests["sqlcommands"])
+
+    if 'xsscommands' in tests.keys():      # Test for Cross Site Scripting attacks
+        findIt(line, line_counter, "XSS", tests["xsscommands"])
+
+    if 'irccommands' in tests.keys():      # Test for IRC commands
+        findIt(line, line_counter, "IRC", tests["irccommands"])
+
+    line_counter += 1
+
+# Show the Results
+if len(matches) == 0:
+    print "[-] No strings found."
+elif len(matches) > 0:
+    print "[+] Found the following Categories and Strings"
+    for k,v in sorted(matches):
+        print "    [+] %s: %s" % (k, v)
