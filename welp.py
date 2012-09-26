@@ -48,14 +48,14 @@ IRC_COMMAND_LIST = ["Joined channel", "Port", "BOT", "Login", "flood",\
 
 def findIt(line, line_counter, search_cat, search_strings):
     # Need to remove the "global" below and get it to work another way
-    global performed
+    global matches
 
     # Read in line of the log file and look for all needles
     for search_string in search_strings:
         # TODO - Use specific REGEX for the specific NEEDLE_TYPE
         if re.search(search_string, line, re.I):
             log_entry = (search_cat, search_string)
-            performed.add(log_entry)
+            matches.add(log_entry)
 
             print "[+] Line %s contains the %s string: %s" % (line_counter, search_cat, search_string) #DEBUG
 
@@ -79,10 +79,10 @@ try:
     print "\n[!] Analyzing the file: ",user_log_file
 
     # Create a SET for the attacks that we see
-    performed = set([])       # This will get phased out as the more-robust attacker profile is implemented
+    matches = set([])       # This will get phased out as the more-robust attacker profile is implemented
     # Create a SET for the information about the attacker <-- not sure this is right...just an array instead?
     attacker = set([])        # This will be an array for the attacker: ip, useragents, dates, times (first/most recent), # attacks
-    line_counter = 0          # Counts the lines in the file
+    line_counter = 1          # Counts the lines in the file
 
 
     # Start pulling each line of the file then performs all analysis
@@ -106,11 +106,11 @@ try:
 	    line_counter += 1
 
     # Show the Results
-    if len(performed) == 0:
+    if len(matches) == 0:
         print "[-] No strings found."
-    elif len(performed) > 0:
+    elif len(matches) > 0:
         print "[+] Found the following Categories and Strings"
-        for k,v in sorted(performed):
+        for k,v in sorted(matches):
 	    print "    [+] %s: %s" % (k, v)
 
 except (IOError) :
