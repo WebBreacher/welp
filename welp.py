@@ -112,6 +112,7 @@ for line in log_file:
     if re.search('^((127.0.0.1)|localhost)', line):
         continue
 
+    # TODO - Just make the tests[] more easy to iterate and do a for loop instead of IFs
     if 'httpmethods' in tests.keys():    # Test for HTTPMethods
         findIt(line, line_counter, "HTTP Method", tests["httpmethods"])
 
