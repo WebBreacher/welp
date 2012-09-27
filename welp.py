@@ -52,7 +52,7 @@ IRC_COMMAND_LIST = ["Joined channel", "Port", "BOT", "Login", "flood",\
 # Create a SET for the attacks that we see
 matches = set([])         # This will get phased out as the more-robust attacker profile is implemented
 # Create a SET for the information about the attacker <-- not sure this is right...just an array instead?
-attacker = set([])        # This will be an array for the attacker: ip, useragents, dates, times (first/most recent), # attacks
+attacker = {'ip': '', 'event_date_first': '', 'event_date_most_recent': '', 'user_agents': ''}           # This will be a dictionary for the attacker: ip, useragents, dates, times (first/most recent), # attacks
 line_counter = 1          # Counts the lines in the file
 
 
@@ -60,26 +60,48 @@ line_counter = 1          # Counts the lines in the file
 
 def findIt(line, line_counter, search_cat, search_strings):
     # Need to remove the "global" below and get it to work another way
-    global matches
+    global matches, attacker
 
     # Break down the log_file line into components
-    # 1=IP, 2=Date/Time of the activity, 3=HTTP Method, 4 = User Agent
-    line_regex_match = re.search('^(\d+\.\d+\.\d+\.\d+) .*\[(\d+"([A-Z]{3,8}) \/.* HTTP.*" \d{3} \d+ ".*" "([A-Za-z].+)"', line)
+    # Apache 2.x access log regex
+    # 1=IP, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=User Agent
+    line_regex_split = re.search('^(\d+\.\d+\.\d+\.\d+) .*\[(\d+.*) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.*" \d{3} \d+ ".*" "([A-Za-z].+)"', line)
+
+    # Assign easy to understand variables
+    remote_ip     = line_regex_split.group(1)
+    event_date    = line_regex_split.group(2)
+    http_method   = line_regex_split.group(3)
+    url_requested = line_regex_split.group(4)
+    user_agent    = line_regex_split.group(5)
 
     if search_cat == 'HTTP Method':
         # Regex for HTTP Method is the first group
-        line = line_regex_match.group(1)
+        line = http_method
     elif search_cat == 'User Agent':
         # Regex for the User Agent is second group
-        line = line_regex_match.group(2)
+        line = user_agent
 
     # Look for search_strings
     for search_string in search_strings:
         if re.search(search_string, line, re.I):
             log_entry = (search_cat, search_string)
             matches.add(log_entry)
-
             #print "[+] Line %s contains the %s string: %s" % (line_counter, search_cat, search_string) #DEBUG
+
+            # Add content to the attacker array
+            # If we don't have an existing entry for this IP
+            if remote_ip not in attacker['ip']:
+                attacker['ip'] = remote_ip
+
+            if event_date < attacker['event_date_first']:
+                attacker['event_date_first'] = event_date
+
+            if event_date > attacker['event_date_most_recent']:
+                attacker['event_date_most_recent'] = event_date
+
+            # TODO - Here we need to create a list inside the dictionary key 'user_agents'
+            #if user_agent not in attacker['user_agents']:
+                #attacker['user_agents'][]=user_agent
 
 
 # Main Code #
@@ -128,4 +150,6 @@ if len(matches) == 0:
 elif len(matches) > 0:
     print "[+] Found the following Categories and Strings"
     for k,v in sorted(matches):
+        print "    [+] %s: %s" % (k, v)
+    for k,v in attacker.iteritems():
         print "    [+] %s: %s" % (k, v)
