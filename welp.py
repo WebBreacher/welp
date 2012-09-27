@@ -51,8 +51,8 @@ IRC_COMMAND_LIST = ["Joined channel", "Port", "BOT", "Login", "flood",\
 
 # Create a SET for the attacks that we see
 matches = set([])         # This will get phased out as the more-robust attacker profile is implemented
-# Create a SET for the information about the attacker <-- not sure this is right...just an array instead?
-attacker = {'ip': '', 'event_date_first': '', 'event_date_most_recent': '', 'user_agents': ''}           # This will be a dictionary for the attacker: ip, useragents, dates, times (first/most recent), # attacks
+# This will be a dictionary for the attacker: ip, useragents, dates, times (first/most recent), # attacks
+attacker = {'ip': '', 'event_date_first': '', 'event_date_most_recent': '', 'user_agents': '', 'num_of_attacks': ''}
 line_counter = 1          # Counts the lines in the file
 
 
