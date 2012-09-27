@@ -26,7 +26,9 @@
 
 import os,sys,re
 
-# Constants with the strings we will look for in the logfile
+
+# Constants & Variables #
+
 # UserAgents show (in general) in Apache access.log not error.log
 USER_AGENT_STRINGS = ["dirbuster", "nikto", "netsparker", "acunetix", "w3af",\
                         "burp"]
@@ -47,30 +49,40 @@ IRC_COMMAND_LIST = ["Joined channel", "Port", "BOT", "Login", "flood",\
                     "INVITE", "INFO", "TRACE", "USERHOST", "WHO", "WHOIS",\
                     "VERSION"]
 
+# Create a SET for the attacks that we see
+matches = set([])         # This will get phased out as the more-robust attacker profile is implemented
+# Create a SET for the information about the attacker <-- not sure this is right...just an array instead?
+attacker = set([])        # This will be an array for the attacker: ip, useragents, dates, times (first/most recent), # attacks
+line_counter = 1          # Counts the lines in the file
+
+
+# Functions #
 
 def findIt(line, line_counter, search_cat, search_strings):
     # Need to remove the "global" below and get it to work another way
     global matches
 
-    # Break down the line into components
-    line_regex_match = re.search('"([A-Z]{3,8}) \/.* HTTP.*" \d{3} \d+ ".*" "([A-Za-z].+)"', line)
+    # Break down the log_file line into components
+    # 1=IP, 2=Date/Time of the activity, 3=HTTP Method, 4 = User Agent
+    line_regex_match = re.search('^(\d+\.\d+\.\d+\.\d+) .*\[(\d+"([A-Z]{3,8}) \/.* HTTP.*" \d{3} \d+ ".*" "([A-Za-z].+)"', line)
 
     if search_cat == 'HTTP Method':
         # Regex for HTTP Method is the first group
         line = line_regex_match.group(1)
     elif search_cat == 'User Agent':
-        # Regexe for the User Agent is second group
+        # Regex for the User Agent is second group
         line = line_regex_match.group(2)
 
-    # Look for all search_strings
+    # Look for search_strings
     for search_string in search_strings:
-        # TODO - Use specific REGEX for the specific search_cat
         if re.search(search_string, line, re.I):
             log_entry = (search_cat, search_string)
             matches.add(log_entry)
 
             #print "[+] Line %s contains the %s string: %s" % (line_counter, search_cat, search_string) #DEBUG
 
+
+# Main Code #
 
 # Check how many command line args were passed and provide HELP msg if not right
 if len(sys.argv) == 2:
@@ -82,28 +94,21 @@ else:
 # Parse the command arguments to see if the user passed in which tests they wanted done
 # TODO - read in args for -t or --type and add those lists to the tests{}
 # For now, make a dictionary and lets do all tests
-tests = { 'useragents': USER_AGENT_STRINGS,
-          'httpmethods': HTTP_METHOD_LIST,
-          'sqlcommands': SQL_COMMAND_LIST,
-          'xsscommands': XSS_COMMAND_LIST,
-          'irccommands': IRC_COMMAND_LIST   }
+tests = { 'User Agent': USER_AGENT_STRINGS,
+          'HTTP Method': HTTP_METHOD_LIST,
+          'SQLi': SQL_COMMAND_LIST,
+          'XSS': XSS_COMMAND_LIST,
+          'IRC': IRC_COMMAND_LIST   }
 
+# Open the log_file (or try to)
 try:
-    # Try to open the file specified
     log_file = open(user_log_file,'r').readlines()
-
 except (IOError) :
     print "\n\n[!!]Can't read file ... Exiting."
     sys.exit(0)
 
-print "\n[!] Analyzing the file: ",user_log_file
-
-# Create a SET for the attacks that we see
-matches = set([])       # This will get phased out as the more-robust attacker profile is implemented
-# Create a SET for the information about the attacker <-- not sure this is right...just an array instead?
-attacker = set([])        # This will be an array for the attacker: ip, useragents, dates, times (first/most recent), # attacks
-line_counter = 1          # Counts the lines in the file
-
+# Actually start to look for stuff
+print "\n[-] Analyzing the file: ", user_log_file
 
 # Start pulling each line of the file then performs all analysis
 for line in log_file:
@@ -112,23 +117,10 @@ for line in log_file:
     if re.search('^((127.0.0.1)|localhost)', line):
         continue
 
-    # TODO - Just make the tests[] more easy to iterate and do a for loop instead of IFs
-    if 'httpmethods' in tests.keys():    # Test for HTTPMethods
-        findIt(line, line_counter, "HTTP Method", tests["httpmethods"])
-
-    if 'useragents' in tests.keys():      # Test for UserAgents
-        findIt(line, line_counter, "User Agent", tests["useragents"])
-
-    if 'sqlcommands' in tests.keys():      # Test for SQL Injection attacks
-        findIt(line, line_counter, "SQLi", tests["sqlcommands"])
-
-    if 'xsscommands' in tests.keys():      # Test for Cross Site Scripting attacks
-        findIt(line, line_counter, "XSS", tests["xsscommands"])
-
-    if 'irccommands' in tests.keys():      # Test for IRC commands
-        findIt(line, line_counter, "IRC", tests["irccommands"])
-
-    line_counter += 1
+    # Cycle through each of the tests the user specified
+    for key in tests:
+        findIt(line, line_counter, key, tests[key])
+        line_counter += 1
 
 # Show the Results
 if len(matches) == 0:
