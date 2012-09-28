@@ -63,6 +63,7 @@ def findIt(line, line_counter, search_cat, search_strings):
     global matches, attacker
 
     # Break down the log_file line into components
+    # TODO - Need to examine other web server logs (IIS, ColdFusion, Tomcat, ...)
     # Apache 2.x access log regex
     # 1=IP, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=User Agent
     line_regex_split = re.search('^(\d+\.\d+\.\d+\.\d+) .*\[(\d+.*) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.*" \d{3} \d+ ".*" "([A-Za-z].+)"', line)
@@ -89,13 +90,15 @@ def findIt(line, line_counter, search_cat, search_strings):
             #print "[+] Line %s contains the %s string: %s" % (line_counter, search_cat, search_string) #DEBUG
 
             # Add content to the attacker array
-            # If we don't have an existing entry for this IP
+            # If we don't have an existing entry for this IP, create one
             if remote_ip not in attacker['ip']:
                 attacker['ip'] = remote_ip
 
+            # Figure out when the events for this IP were first seen within the log
             if event_date < attacker['event_date_first']:
                 attacker['event_date_first'] = event_date
 
+            # When was the most recent event from this IP?
             if event_date > attacker['event_date_most_recent']:
                 attacker['event_date_most_recent'] = event_date
 
@@ -113,8 +116,7 @@ else:
     sys.exit('\n[!!] Fatal Error. You need to enter in the logfile name such as: %s logfilename\n' % sys.argv[0])
 
 
-# Parse the command arguments to see if the user passed in which tests they wanted done
-# TODO - read in args for -t or --type and add those lists to the tests{}
+# TODO - Read in args for -t or --type and add those lists to the tests{}
 # For now, make a dictionary and lets do all tests
 tests = { 'User Agent': USER_AGENT_STRINGS,
           'HTTP Method': HTTP_METHOD_LIST,
@@ -132,10 +134,10 @@ except (IOError) :
 # Actually start to look for stuff
 print "\n[-] Analyzing the file: ", user_log_file
 
-# Start pulling each line of the file then performs all analysis
+# Pull each line of the file then perform all analysis
 for line in log_file:
 
-    # If the line is from 127.0.0.1|localhost, ignore it
+    # If the log traffic is from 127.0.0.1|localhost, ignore it
     if re.search('^((127.0.0.1)|localhost)', line):
         continue
 
@@ -147,9 +149,11 @@ for line in log_file:
 # Show the Results
 if len(matches) == 0:
     print "[-] No strings found."
+
 elif len(matches) > 0:
     print "[+] Found the following Categories and Strings"
     for k,v in sorted(matches):
         print "    [+] %s: %s" % (k, v)
+    print "[+] Found the following IPs (and associated activity)"
     for k,v in attacker.iteritems():
         print "    [+] %s: %s" % (k, v)
