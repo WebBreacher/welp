@@ -19,49 +19,38 @@
 #       s - SQLi
 #       u - UserAgent Strings
 #       x - XSS
-# 3 - When a match is found
-#   a - Create a record of the event by IP. Track all the things that IP did in that entry
-#       Including: first and last times/dates seen, all attacks performed, etc.
+# 3 - Count up the number of events per IP and give stats
 
 
-import os,sys,re
+import os, sys, re, itertools, operator
 
 
 # Constants & Variables #
 
 # UserAgents show (in general) in Apache access.log not error.log
-USER_AGENT_STRINGS = ["dirbuster", "nikto", "netsparker", "acunetix", "w3af",\
-                        "burp"]
+USER_AGENT_STRINGS = ["dirbuster", "nikto", "netsparker", "acunetix", "w3af", "burp"]
 
 # HTTP Methods that aren't used much
 HTTP_METHOD_LIST = ["head", "options", "track", "trace"]
 
 # TODO - Search after the ? in non-RESTful URLs
-SQL_COMMAND_LIST = ["select", "union", "group", "benchmark", "null", "'--",\
-                    "or 1=1"]
+SQL_COMMAND_LIST = ["select", "union", "group", "benchmark", "null", "'--", "or 1=1"]
 
 XSS_COMMAND_LIST = ["alert", "xss", "ha.ckers.org"]
 
-IRC_COMMAND_LIST = ["Joined channel", "Port", "BOT", "Login", "flood",\
-                    "ddos", "NICK", "ECHO", "PRIVMSG", "ADMIN", "AWAY",\
-                    "CONNECT", "KICK", "LIST", "MODE", "MOTD", "PING",\
-                    "POMG", "QUIT", "SERVLIST", "SERVICE", "NAMES", "JOIN",\
-                    "INVITE", "INFO", "TRACE", "USERHOST", "WHO", "WHOIS",\
-                    "VERSION"]
+IRC_COMMAND_LIST = ["Joined channel", "Port", "BOT", "Login", "flood", "ddos", "NICK", "ECHO", "PRIVMSG", "ADMIN", "AWAY",\
+                    "CONNECT", "KICK", "LIST", "MODE", "MOTD", "PING", "POMG", "QUIT", "SERVLIST", "SERVICE", "NAMES", "JOIN",\
+                    "INVITE", "INFO", "TRACE", "USERHOST", "WHO", "WHOIS", "VERSION"]
 
-# Create a SET for the attacks that we see
-matches = set([])         # This will get phased out as the more-robust attacker profile is implemented
-# This will be a dictionary for the attacker: ip, useragents, dates, times (first/most recent), # attacks
-attacker = {'ip': '', 'event_date_first': '', 'event_date_most_recent': '', 'user_agents': '', 'num_of_attacks': ''}
+# TODO - May wish to use http://docs.python.org/library/collections.html - elements(), most_common() and others
+# Create a list of dictionaries per http://www.developer.nokia.com/Community/Wiki/List_of_Dictionaries_in_Python
+attacker = []
 line_counter = 1          # Counts the lines in the file
 
 
 # Functions #
 
 def findIt(line, line_counter, search_cat, search_strings):
-    # Need to remove the "global" below and get it to work another way
-    global matches, attacker
-
     # Break down the log_file line into components
     # TODO - Need to examine other web server logs (IIS, ColdFusion, Tomcat, ...)
     # Apache 2.x access log regex
@@ -75,36 +64,19 @@ def findIt(line, line_counter, search_cat, search_strings):
     url_requested = line_regex_split.group(4)
     user_agent    = line_regex_split.group(5)
 
+    # Set the spot in the log entry that we want to examine
     if search_cat == 'HTTP Method':
-        # Regex for HTTP Method is the first group
-        line = http_method
+        line = http_method          # Regex for HTTP Method is the first group
     elif search_cat == 'User Agent':
-        # Regex for the User Agent is second group
-        line = user_agent
+        line = user_agent           # Regex for the User Agent is second group
+    elif search_cat == 'IRC' or search_cat == 'XSS' or search_cat == 'SQLi':
+        line = url_requested        # Regex should look at the URL requested
 
     # Look for search_strings
     for search_string in search_strings:
         if re.search(search_string, line, re.I):
-            log_entry = (search_cat, search_string)
-            matches.add(log_entry)
-            #print "[+] Line %s contains the %s string: %s" % (line_counter, search_cat, search_string) #DEBUG
-
-            # Add content to the attacker array
-            # If we don't have an existing entry for this IP, create one
-            if remote_ip not in attacker['ip']:
-                attacker['ip'] = remote_ip
-
-            # Figure out when the events for this IP were first seen within the log
-            if event_date < attacker['event_date_first']:
-                attacker['event_date_first'] = event_date
-
-            # When was the most recent event from this IP?
-            if event_date > attacker['event_date_most_recent']:
-                attacker['event_date_most_recent'] = event_date
-
-            # TODO - Here we need to create a list inside the dictionary key 'user_agents'
-            #if user_agent not in attacker['user_agents']:
-                #attacker['user_agents'][]=user_agent
+            # Add content to the attacker list of dictionaries
+            attacker.append({'ip': remote_ip,'user_agent': user_agent,'event_date': event_date, 'cat': search_cat, 'string':search_string, 'line': line, 'line_number': line_counter})
 
 
 # Main Code #
@@ -147,13 +119,12 @@ for line in log_file:
         line_counter += 1
 
 # Show the Results
-if len(matches) == 0:
+if len(attacker) == 0:
     print "[-] No strings found."
 
-elif len(matches) > 0:
-    print "[+] Found the following Categories and Strings"
-    for k,v in sorted(matches):
-        print "    [+] %s: %s" % (k, v)
+elif len(attacker) > 0:
     print "[+] Found the following IPs (and associated activity)"
-    for k,v in attacker.iteritems():
-        print "    [+] %s: %s" % (k, v)
+
+    attacker.sort(key=operator.itemgetter('string'))
+    for event in attacker:
+        print '    [+] "%s" found in IP: %s in line# %d -> %s' % (event['string'], event['ip'], event['line_number'], event['line']        )
