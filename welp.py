@@ -46,12 +46,15 @@ IRC_COMMAND_LIST = ["Joined channel", "Port", "BOT", "Login", "flood", "ddos", "
 # TODO - May wish to use http://docs.python.org/library/collections.html - elements(), most_common() and others
 # Create a list of dictionaries per http://www.developer.nokia.com/Community/Wiki/List_of_Dictionaries_in_Python
 attacker = []
+php_ids_rules = {}
 
 #=================================================
 # Functions
 #=================================================
 
 def findIt(line, line_counter, search_cat, search_strings):
+
+    #print "[-] Examining log line %s" % line_counter #DEBUG
 
     # Break down the log_file line into components
     # TODO - Need to examine other web server logs (IIS, ColdFusion, Tomcat, ...)
@@ -78,13 +81,25 @@ def findIt(line, line_counter, search_cat, search_strings):
     for search_string in search_strings:
         if re.search(search_string, line, re.I):
             # Add content to the attacker list of dictionaries
-            attacker.append({'ip': remote_ip,'user_agent': user_agent, 'event_date': event_date, 'cat': search_cat, 'string':search_string, 'line': line, 'line_number': line_counter})
+            attacker.append({'ip': remote_ip,'user_agent': user_agent, 'event_date': event_date, 'cat': search_cat,
+            'string':search_string, 'line': line, 'line_number': line_counter})
 
+    # Look for PHP-IDS matches
+    for id in php_ids_rules.keys():
+        try:
+            regex = re.compile(php_ids_rules[id])
+        except:
+            print "[!] Error compiling PHP-IDS rule %s. Skipping" % id
+            continue
+
+        if regex.search(line):
+            # Add content to the attacker list of dictionaries
+            attacker.append({'ip': remote_ip,'user_agent': user_agent, 'event_date': event_date, 'cat': "PHP-IDS Rule",
+            'string':php_ids_rules[id], 'line': line, 'line_number': line_counter})
 
 def main():
 
     line_counter = 1          # Counts the lines in the file
-    php_ids_rules = {}
 
     # Check how many command line args were passed and provide HELP msg if not right
     if len(sys.argv) == 2:
@@ -112,24 +127,31 @@ def main():
     # Open the PHP-IDS filter file - grab most recent from https://phpids.org/
     try:
         xmldoc = minidom.parse("default_filter.xml")
-
-        for filt in xmldoc.getElementsByTagName('filter'):
-            id_xml = filt.getElementsByTagName('id')[0].toxml()
-            id_content = id_xml.replace('<id>','').replace('</id>','')
-            rule_xml = filt.getElementsByTagName('rule')[0].toxml()
-            rule_content = rule_xml.replace('<rule>','').replace('</rule>','')
-            rule_content = rule_content.replace("<![CDATA[", "")
-            rule_content = rule_content.replace("]]>", "")
-            php_ids_rules[id_content] = rule_content
-
-        print list(php_ids_rules.items()) #DEBUG
-
     except (IOError) :
         sys.exit("\n[!!] Can't read file the PHP-IDS default_filter.xml.\
                   \n     Please get the latest file from https://phpids.org/\
                   \n     and place the XML file in the same directory as this script.\
                   \n[!!] Exiting.\n")
 
+    # Cycle through all the PHP-IDS regexs and make a dictionary
+    print "\n[-] Opened the PHP-IDS filter file and parsing the rules. "
+    for filt in xmldoc.getElementsByTagName('filter'):
+        id_xml = filt.getElementsByTagName('id')[0].toxml()
+        id_content = id_xml.replace('<id>','').replace('</id>','')
+        rule_xml = filt.getElementsByTagName('rule')[0].toxml()
+        rule_content = rule_xml.replace('<rule>','').replace('</rule>','')
+        rule_content = rule_content.replace("<![CDATA[", "")
+        rule_content = rule_content.replace("]]>", "")
+
+        try:
+            regex = re.compile(rule_content)
+        except:
+            print "[!] Error compiling PHP-IDS rule %s. Skipping" % id_content
+            continue
+
+        php_ids_rules[id_content] = rule_content
+
+    #print list(php_ids_rules.items()) #DEBUG
 
     # Actually start to look for stuff
     print "\n[-] Analyzing the file: ", user_log_file
