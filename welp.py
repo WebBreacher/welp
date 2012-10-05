@@ -17,9 +17,11 @@ Authore:     Micah Hoffman
        u - UserAgent Strings
        x - XSS
  3 - Count up the number of events per IP and give stats
+ 4 - Require the default_filter.xml php-ids file (ship with one) in the current dir
 '''
 
 import os, sys, re, itertools, operator
+from xml.dom import minidom
 
 
 #=================================================
@@ -82,12 +84,14 @@ def findIt(line, line_counter, search_cat, search_strings):
 def main():
 
     line_counter = 1          # Counts the lines in the file
+    php_ids_rules = {}
 
     # Check how many command line args were passed and provide HELP msg if not right
     if len(sys.argv) == 2:
         user_log_file=sys.argv[1]
     else:
-        sys.exit('\n[!!] Fatal Error. You need to enter in the logfile name such as: %s logfilename\n' % sys.argv[0])
+        sys.exit('\n[!!] Fatal Error. You need to enter in the full\
+                  \n     logfile path and name such as: %s [logfilename]\n' % sys.argv[0])
 
 
     # TODO - Read in args for -t or --type and add those lists to the tests{}
@@ -102,8 +106,30 @@ def main():
     try:
         log_file = open(user_log_file,'r').readlines()
     except (IOError) :
-        print "\n\n[!!]Can't read file ... Exiting."
-        sys.exit(0)
+        sys.exit("\n[!!] Can't read file the logfile you entered.\
+                  \n[!!] Exiting.\n")
+
+    # Open the PHP-IDS filter file - grab most recent from https://phpids.org/
+    try:
+        xmldoc = minidom.parse("default_filter.xml")
+
+        for filt in xmldoc.getElementsByTagName('filter'):
+            id_xml = filt.getElementsByTagName('id')[0].toxml()
+            id_content = id_xml.replace('<id>','').replace('</id>','')
+            rule_xml = filt.getElementsByTagName('rule')[0].toxml()
+            rule_content = rule_xml.replace('<rule>','').replace('</rule>','')
+            rule_content = rule_content.replace("<![CDATA[", "")
+            rule_content = rule_content.replace("]]>", "")
+            php_ids_rules[id_content] = rule_content
+
+        print list(php_ids_rules.items()) #DEBUG
+
+    except (IOError) :
+        sys.exit("\n[!!] Can't read file the PHP-IDS default_filter.xml.\
+                  \n     Please get the latest file from https://phpids.org/\
+                  \n     and place the XML file in the same directory as this script.\
+                  \n[!!] Exiting.\n")
+
 
     # Actually start to look for stuff
     print "\n[-] Analyzing the file: ", user_log_file
