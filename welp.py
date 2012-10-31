@@ -58,11 +58,11 @@ def rematch(line):      # Determine log type and set name/regex
         return log
 
     # Apache 2.x Access Log
-    match = re.match("^\d{1,3}\.\d{1,3}\.", line)
+    match = re.match("^.+\..+\..+ ", line)
     if match:
         log['type']="Apache2 Access"
-        # REGEX - 1=IP, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=User Agent
-        log['regex']='^(\d+\.\d+\.\d+\.\d+) .*\[(\d+.*) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.*" \d{3} \d+ ".*" "([A-Za-z].+)"'
+        # REGEX - 1=IP/domain, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=User Agent
+        log['regex']='^(.+\..+\..+) .+\[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} \d+ ".*" "(.*)"'
         return
 
     # If we have not returned already, there is no match. Exit
@@ -90,7 +90,7 @@ def seen_ip_before(event):
             return
 
     # Add new if we haven't had a match
-    print bcolors.PURPLE + "[Found] Making new record for %s." % event[0]
+    print bcolors.PURPLE + "[Found] Making new record for %s; Line# %d." % (event[0],event[6])
     attacker.append({'ip': event[0],\
                      'ua': set([event[1]]),\
                      'date_earliest':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
@@ -107,7 +107,9 @@ def findIt(line, line_counter, search_cat, search_strings):
     line_regex_split = re.search(log['regex'], line)
 
     # Some lines in the log we don't care about (notice, info...). So if we have no regex match discard those lines
-    if line_regex_split == None: return
+    if line_regex_split == None:
+        print bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match our normal log REGEX." % line_number
+        return
 
     # Break down the log_file line into components
     if log['type'] == "Apache2 Error":
@@ -129,6 +131,7 @@ def findIt(line, line_counter, search_cat, search_strings):
         http_method   = line_regex_split.group(3)
         url_requested = line_regex_split.group(4)
         user_agent    = line_regex_split.group(5)
+
 
         # Set the spot in the log entry that we want to examine
         if search_cat == 'HTTP Method':
@@ -226,7 +229,7 @@ def main():
 
         # Cycle through each of the tests the user specified
         for key in tests:
-            findIt(line, line_counter, key, tests[key])
+            findIt(line.strip(), line_counter, key, tests[key])
 
         line_counter += 1
 
