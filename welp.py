@@ -12,7 +12,6 @@ Author:      Micah Hoffman (@WebBreacher)
  10- Look at the HTTP response code for success or failure and only report 2xx
  11- Look at the HTTP response code and count # of each code each IP got (34 500s....)
  12- Mod the IP field to also allow for domain names
- 13- Do reverse lookup of the domain names to get IPs and stats
 
 '''
 
@@ -40,13 +39,18 @@ log = {}
 # Functions & Classes
 #=================================================
 def signal_handler(signal, frame):
-        print bcolors.RED + '\nYou pressed Ctrl+C! Exiting.' + bcolors.ENDC
-        sys.exit()
+    # TODO - This exits the loop line but not the application
+    print bcolors.RED + '\nYou pressed Ctrl+C! Exiting.' + bcolors.ENDC
+    sys.exit(1)
 
 def rematch(line):      # Determine log type and set name/regex
     # Apache 2.x Error Log
     match = re.match("^\[[A-Z][a-z]{2} ", line)
     if match:
+        # TODO - Get this working to analyze error logs
+        print bcolors.RED + '\nYou Apache Error Log detected. Right now we only do Apache Access Logs. Sorry. Exiting.' + bcolors.ENDC
+        sys.exit()
+
         log['type']="Apache2 Error"
         # TODO - Make this strip off/ignore the referrer if it is there - regex not working
         # REGEX - 1=Date/Time of the activity, 2=IP, 3=URL Requested
@@ -65,12 +69,16 @@ def rematch(line):      # Determine log type and set name/regex
     print bcolors.RED + "\n[Error] " + bcolors.ENDC + "No idea what kinda log you just submitted. Right now we only work on Apache 2.x access and error logs."
     sys.exit()
 
-def seen_ip_before(event): 
-    # 0=remote_ip,1=user_agent,2=event_date,3=search_cat,4=search_string,5=line,6=line_counter]
+def seen_ip_before(event):
+    # Apache Access = 0=remote_ip,1=user_agent,2=event_date,3=search_cat,4=search_string,5=line,6=line_counter
+
+    # Grab just the needed parts of Nikto UA
+    is_ua_nikto = re.search("\((Nikto/[0-9]\.[0-9]\.[0-9])\)", event[1])
+    if is_ua_nikto: event[1] = is_ua_nikto.group(1)
+
     for actor in attacker:
         if event[0] in actor['ip']:
             print bcolors.YELLOW + "[Found] New activity for %s; Line# %d." % (event[0],event[6])
-            if event[1].find('Nikto'): event[1] = 'Nikto' #TODO just grab using regex the Nikto and version
             actor['ua'].add(event[1])
             tt = datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")
             actor['date_all'].add(tt)
@@ -83,7 +91,6 @@ def seen_ip_before(event):
 
     # Add new if we haven't had a match
     print bcolors.PURPLE + "[Found] Making new record for %s." % event[0]
-    if event[1].find('Nikto'): event[1] = 'Nikto' #TODO just grab using regex the Nikto and version
     attacker.append({'ip': event[0],\
                      'ua': set([event[1]]),\
                      'date_earliest':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
@@ -93,7 +100,7 @@ def seen_ip_before(event):
                      'attacks':set([event[4]]),\
                      'line_num':set([event[6]])\
                      })
-    
+
 
 def findIt(line, line_counter, search_cat, search_strings):
 
@@ -185,21 +192,20 @@ def main():
     # Cycle through all the PHP-IDS regexs and make a dictionary
     print bcolors.BLUE + "[info] " + bcolors.ENDC + "Opened the PHP-IDS filter file and parsing the rules. "
     for filt in xmldoc.getElementsByTagName('filter'):
-        id_xml = filt.getElementsByTagName('id')[0].toxml()
-        id_content = id_xml.replace('<id>','').replace('</id>','')
+        descr_xml = filt.getElementsByTagName('description')[0].toxml()
+        descr_content = descr_xml.replace('<description>','').replace('</description>','')
         rule_xml = filt.getElementsByTagName('rule')[0].toxml()
         rule_content = rule_xml.replace('<rule>','').replace('</rule>','')
         rule_content = rule_content.replace("<![CDATA[", "")
         rule_content = rule_content.replace("]]>", "")
-        #TODO - Grab the rule name or what it does and output that for the "string" in the ouput
 
         try:
             regex = re.compile(rule_content)
         except:
-            print bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % id_content
+            print bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % descr_content
             continue
 
-        php_ids_rules[id_content] = rule_content
+        php_ids_rules[descr_content] = rule_content
 
     # Using line 1 - see what kind of log this is
     if line_counter == 1:
@@ -207,17 +213,14 @@ def main():
         rematch(log_file[0])
         print bcolors.GREEN + "[info] " + bcolors.ENDC + "Log format found to be %s" % log['type']
 
+
     # Actually start to look for stuff
     print bcolors.GREEN + "[info] " + bcolors.ENDC + "Analyzing the file:", user_log_file
-    print bcolors.GREEN + "[info] " + bcolors.ENDC+ "There are %d lines in this log file." % len(log_file) #TODO check this
 
     # Pull each line of the file then perform all analysis
     for line in log_file:
-        #sys.stdout.write(bcolors.BLUE + "\r[info] " + bcolors.YELLOW + "Processing line # %d" %line_counter)
-        #sys.stdout.flush()
-
         signal.signal(signal.SIGINT, signal_handler)    # Trap Ctrl-C
-        
+
         # If the log traffic is from 127.0.0.1|localhost, ignore it
         if re.search('^((127.0.0.1)|localhost)', line): continue
 
@@ -236,13 +239,13 @@ def main():
 
         #attacker.sort(key=operator.itemgetter('string'))
         for event in attacker:
-            print bcolors.YELLOW +  "%s" % event['ip']
-            print bcolors.ENDC +    "\tUser-Agents: %s" % ",\n\t\t".join(event['ua'])
-            print                   "\tEarliest Date Seen:   %s" % event['date_earliest']
-            print                   "\tEarliest Recent Seen: %s" % event['date_recent']
+            print bcolors.YELLOW +  "%s :" % event['ip']
+            print                   "   Earliest Date Seen:   %s" % event['date_earliest']
+            print                   "   Earliest Recent Seen: %s" % event['date_recent']
             #print                   "\tAll Dates Seen:       %s" % ", ".join(event['date_all'])
-            print                   "\tAll Categories Seen:  %s" % ", ".join(event['cats'])
-            print                   "\tAll Attacks Seen:     %s" % ", ".join(event['attacks'])
+            print bcolors.ENDC +    "   User-Agents:\n\t%s" % ",\n\t- ".join(event['ua'])
+            print                   "   All Categories Seen:\n\t%s" % "\n\t- ".join(event['cats'])
+            print                   "   All Attacks Seen:\n\t%s" % ",\n\t- ".join(event['attacks'])
 
 
 #=================================================
@@ -251,4 +254,4 @@ def main():
 
 if __name__ == "__main__": main()
 
-print bcolors.GREEN + "[Finished] " + bcolors.CYAN + "WELP script completed with %d events identified. Thanks for using it.\n" % len(attacker)
+print bcolors.GREEN + "\n[Finished] " + bcolors.CYAN + "WELP script completed with %d IPs identified.\n" % len(attacker)
