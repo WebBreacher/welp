@@ -62,7 +62,7 @@ def rematch(line):      # Determine log type and set name/regex
     if match:
         log['type']="Apache2 Access"
         # REGEX - 1=IP/domain, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=User Agent
-        log['regex']='^(.+\..+\..+) .+\[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} \d+ ".*" "(.*)"'
+        log['regex']='^(.+\..+\..+) - - \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} \d+ ".*" "(.*)"'
         return
 
     # If we have not returned already, there is no match. Exit
@@ -108,7 +108,7 @@ def findIt(line, line_counter, search_cat, search_strings):
 
     # Some lines in the log we don't care about (notice, info...). So if we have no regex match discard those lines
     if line_regex_split == None:
-        print bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match our normal log REGEX." % line_number
+        print bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match our normal log REGEX." % line_counter
         return
 
     # Break down the log_file line into components
