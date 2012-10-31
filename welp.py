@@ -7,6 +7,9 @@ Author:      Micah Hoffman (@WebBreacher)
 -------------------------------------------------------------------------------
  TODO (Overall)
 
+ 5 - Add verbosity switch to show all the output that was flagged
+ 6 - Make the output from the Categories and all attacks meaningful
+ 7 - Make output to a file
  8 - Look for other anomalies such as known bad (RAT) strings (/w00t-w00t...)
  9 - Do analysis on the IPs found - lookup? Country?
  10- Look at the HTTP response code for success or failure and only report 2xx
@@ -238,7 +241,8 @@ def main():
         print bcolors.GREEN + "[info] " + bcolors.ENDC + "No security events found."
 
     elif len(attacker) > 0:
-        print bcolors.RED + "[FOUND] " + "Found the following IPs (and associated activity)" + bcolors.ENDC
+        print bcolors.RED + "[FOUND] " + "\n--------------------------------------------------------\n\
+                                          Found the following IPs (and associated activity)" + bcolors.ENDC
 
         #attacker.sort(key=operator.itemgetter('string'))
         for event in attacker:
@@ -246,7 +250,8 @@ def main():
             print                   "   Earliest Date Seen:   %s" % event['date_earliest']
             print                   "   Earliest Recent Seen: %s" % event['date_recent']
             #print                   "\tAll Dates Seen:       %s" % ", ".join(event['date_all'])
-            print bcolors.ENDC +    "   User-Agents:\n\t%s" % ",\n\t- ".join(event['ua'])
+            if len(event['ua']) != 0:
+                print bcolors.ENDC +    "   User-Agents:\n\t%s" % ",\n\t- ".join(event['ua'])
             print                   "   All Categories Seen:\n\t%s" % "\n\t- ".join(event['cats'])
             print                   "   All Attacks Seen:\n\t%s" % ",\n\t- ".join(event['attacks'])
 
