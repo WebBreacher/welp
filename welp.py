@@ -84,7 +84,7 @@ def rematch(line):      # Determine log type and set name/regex
     sys.exit()
 
 def seen_ip_before(event):
-    # Apache Access = 0=remote_ip,1=user_agent,2=event_date,3=search_cat,4=search_string,5=line,6=line_counter
+    # Apache Access = 0=remote_ip,1=user_agent,2=event_date,3=search_cat+attack,4=line,5=line#
 
     # Grab just the needed parts of Nikto UA
     is_ua_nikto = re.search("\((Nikto/[0-9]\.[0-9]\.[0-9])\)", event[1])
@@ -92,27 +92,25 @@ def seen_ip_before(event):
 
     for actor in attacker:
         if event[0] in actor['ip']:
-            print bcolors.YELLOW + "[Found] New activity for %s; Line# %d." % (event[0],event[6])
+            print bcolors.YELLOW + "[Found] New activity for %s; Line# %d." % (event[0],event[5])
             actor['ua'].add(event[1])
             tt = datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")
             actor['date_all'].add(tt)
-            attack = event[3] + " - " + event[4]
-            actor['attacks'].add(attack)
+            actor['attacks'].add(event[3])
             if actor['date_earliest'] > tt : actor['date_earliest'] = tt
             if actor['date_recent'] < tt : actor['date_recent'] = tt
-            actor['line_num'].add(event[6])
+            actor['lines'].add(event[5])
             return
 
     # Add new if we haven't had a match
-    print bcolors.PURPLE + "[Found] Making new record for %s; Line# %d." % (event[0],event[6])
-    attack = event[3] + " - " + event[4]
+    print bcolors.PURPLE + "[Found] Making new record for %s; Line# %d." % (event[0],event[5])
     attacker.append({'ip': event[0],\
                      'ua': set([event[1]]),\
                      'date_earliest':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
                      'date_recent':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
                      'date_all':set([datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")]),\
-                     'attacks':set([attack]),\
-                     'line_num':set([event[6]])\
+                     'attacks':set([event[3]]),\
+                     'lines':set([event[5]])\
                      })
 
 def findIt(line, line_counter, search_cat, search_strings):
@@ -121,7 +119,7 @@ def findIt(line, line_counter, search_cat, search_strings):
 
     # Some lines in the log we don't care about (notice, info...). So if we have no regex match discard those lines
     if line_regex_split == None:
-        print bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match our normal log REGEX." % line_counter
+        print bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Skipping it." % line_counter
         return
 
     # Break down the log_file line into components
@@ -156,7 +154,7 @@ def findIt(line, line_counter, search_cat, search_strings):
         for search_string in search_strings:
             if re.search(search_string, line, re.I):
                 # Add content to the attacker
-                event = [remote_ip,user_agent,event_date,search_cat,search_string,line,line_counter]
+                event = [remote_ip,user_agent,event_date,search_cat + '-' + search_string,line,line_counter]
                 seen_ip_before(event)
 
     # Look for PHP-IDS matches
@@ -169,7 +167,7 @@ def findIt(line, line_counter, search_cat, search_strings):
 
         if regex.search(line):
             # Add content to the attacker list of dictionaries
-            event = [remote_ip,user_agent,event_date,'PHP-IDS Rule',id,line,line_counter]
+            event = [remote_ip,user_agent,event_date,'PHP-IDS Rule -' + id, line, line_counter]
             seen_ip_before(event)
 
 def main():
@@ -255,13 +253,15 @@ def main():
 
         #attacker.sort(key=operator.itemgetter('string'))
         for event in attacker:
-            print bcolors.YELLOW +  "%s :" % event['ip']
-            print                   "   Earliest Date Seen:   %s" % event['date_earliest']
+            print bcolors.RED    +  "%s :" % event['ip']
+            print bcolors.YELLOW +  "   Earliest Date Seen:   %s" % event['date_earliest']
             print                   "   Earliest Recent Seen: %s" % event['date_recent']
             #print                   "\tAll Dates Seen:       %s" % ", ".join(event['date_all'])
             if len(event['ua']) != 0:
-                print bcolors.ENDC +    "   User-Agents:\n\t%s" % ",\n\t- ".join(event['ua'])
-            print                   "   All Attacks Seen:\n\t%s" % ",\n\t- ".join(event['attacks'])
+                print bcolors.GREEN + "   User-Agents:\n\t- %s" % "\n\t- ".join(event['ua'])
+            print bcolors.BLUE    + "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(event['attacks'])
+            print bcolors.PURPLE     + "   Line Numbers Where Attacks were Seen:\n\t- %s" % ", ".join(str(x) for x in event['lines'])
+            print bcolors.ENDC + "---------------------------------------------------------------"
 
 
 #=================================================
