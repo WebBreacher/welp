@@ -6,7 +6,9 @@ Purpose:     Scan error and access logs for known traces of scanners and then gr
 Author:      Micah Hoffman (@WebBreacher)
 -------------------------------------------------------------------------------
  TODO (Overall)
-
+ 2 - Check if all IPs with events are being logged
+ 3 - Get the Apache Error parsing working
+ 4 - Test with real log files from Internet-attached systems
  5 - Add verbosity switch to show all the output that was flagged
  6 - Make the output from the Categories and all attacks meaningful
  7 - Make output to a file
@@ -31,7 +33,7 @@ from welpcore import *
 # Pulled from ModSecurity modsecurity_35_scanners.data
 USER_AGENT_STRINGS = [".nasl","absinthe","acunetix", "arachni","bilbo","black widow","blackwidow","brutus","bsqlbf","burp","cgichk","dirbuster","grabber","grendel-scan","havij","hydra","jaascois","metis","mozilla/4.0 (compatible)","mozilla/4.0 (compatible; msie 6.0; win32)","mozilla/5.0 sf//","n-stealth","nessus","netsparker","nikto","nmap nse","nsauditor","pangolin","paros","pmafind","python-httplib2","sql power injector","sqlmap","sqlninja","w3af","webinspect","webtrends security analyzer"]
 
-HTTP_METHOD_LIST = ["head", "options", "track", "trace"]
+HTTP_METHOD_LIST = ["options", "track", "trace"]
 
 
 attacker = [] #ip,ua,date_earliest,date_recent,date_all,cats,attacks,lines
@@ -65,8 +67,17 @@ def rematch(line):      # Determine log type and set name/regex
     if match:
         log['type']="Apache2 Access"
         # REGEX - 1=IP/domain, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=User Agent
-        log['regex']='^(.+\..+\..+) - - \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} \d+ ".*" "(.*)"'
-        return
+        # Find specific format of Apache Log
+        m = re.match('^.+\..+\..+ - - \[\d+.+ \-\d+\] "[A-Z]{1,11} .* HTTP.+" \d{3} \d+ ".*" ".*"', line)
+        if m:
+            log['regex'] = '^(.+\..+\..+) - - \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} \d+ ".*" "(.+)"'
+            return
+
+        m = re.match('^.+\..+\..+ .+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} \/.* HTTP.+" \d{3} .+ .+ ".+" ".+" ".+"', line)
+        if m:
+            log['regex'] = '^(.+\..+\..+) .+ .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} .+ .+ ".*" "(.+)" ".*"'
+            return
+
 
     # If we have not returned already, there is no match. Exit
     print bcolors.RED + "\n[Error] " + bcolors.ENDC + "No idea what kinda log you just submitted. Right now we only work on Apache 2.x access and error logs."
@@ -85,25 +96,24 @@ def seen_ip_before(event):
             actor['ua'].add(event[1])
             tt = datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")
             actor['date_all'].add(tt)
-            actor['cats'].add(event[3])
+            attack = event[3] + " - " + event[4]
+            actor['attacks'].add(attack)
             if actor['date_earliest'] > tt : actor['date_earliest'] = tt
             if actor['date_recent'] < tt : actor['date_recent'] = tt
-            actor['cats'].add(event[4])
             actor['line_num'].add(event[6])
             return
 
     # Add new if we haven't had a match
     print bcolors.PURPLE + "[Found] Making new record for %s; Line# %d." % (event[0],event[6])
+    attack = event[3] + " - " + event[4]
     attacker.append({'ip': event[0],\
                      'ua': set([event[1]]),\
                      'date_earliest':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
                      'date_recent':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
                      'date_all':set([datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")]),\
-                     'cats':set([event[3]]),\
-                     'attacks':set([event[4]]),\
+                     'attacks':set([attack]),\
                      'line_num':set([event[6]])\
                      })
-
 
 def findIt(line, line_counter, search_cat, search_strings):
 
@@ -241,8 +251,7 @@ def main():
         print bcolors.GREEN + "[info] " + bcolors.ENDC + "No security events found."
 
     elif len(attacker) > 0:
-        print bcolors.RED + "[FOUND] " + "\n--------------------------------------------------------\n\
-                                          Found the following IPs (and associated activity)" + bcolors.ENDC
+        print bcolors.RED + "\n--------------------------------------------------------\n   Found the following IPs (and associated activity)" + bcolors.ENDC
 
         #attacker.sort(key=operator.itemgetter('string'))
         for event in attacker:
@@ -252,7 +261,6 @@ def main():
             #print                   "\tAll Dates Seen:       %s" % ", ".join(event['date_all'])
             if len(event['ua']) != 0:
                 print bcolors.ENDC +    "   User-Agents:\n\t%s" % ",\n\t- ".join(event['ua'])
-            print                   "   All Categories Seen:\n\t%s" % "\n\t- ".join(event['cats'])
             print                   "   All Attacks Seen:\n\t%s" % ",\n\t- ".join(event['attacks'])
 
 
