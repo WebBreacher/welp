@@ -6,9 +6,10 @@ Purpose:     Scan error and access logs for known traces of scanners and then gr
 Author:      Micah Hoffman (@WebBreacher)
 -------------------------------------------------------------------------------
  TODO (Overall)
+ 1 - Threading for the going through the file/searching
  2 - Check if all IPs with events are being logged
  3 - Get the Apache Error parsing working
- 4 - Test with real log files from Internet-attached systems
+ 4 - Test with real log files from Internet-attached systems <--in progress
  5 - Add verbosity switch to show all the output that was flagged
  6 - Make the output from the Categories and all attacks meaningful
  7 - Make output to a file
@@ -16,7 +17,6 @@ Author:      Micah Hoffman (@WebBreacher)
  9 - Do analysis on the IPs found - lookup? Country?
  10- Look at the HTTP response code for success or failure and only report 2xx
  11- Look at the HTTP response code and count # of each code each IP got (34 500s....)
- 12- Mod the IP field to also allow for domain names
 
 '''
 
@@ -68,21 +68,14 @@ def rematch(line):      # Determine log type and set name/regex
         log['type']="Apache2 Access"
         # REGEX - 1=IP/domain, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=User Agent
         # Find specific format of Apache Log
-        m = re.match('^.+\..+\..+ - - \[\d+.+ \-\d+\] "[A-Z]{1,11} .* HTTP.+" \d{3} \d+ ".*" ".*"', line)
+        m = re.match('^.+\..+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} .* HTTP.+" \d{3} \d+ ".*" ".*"', line)
         if m:
-            log['regex'] = '^(.+\..+\..+) - - \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} \d+ ".*" "(.+)"'
+            log['regex'] = '^(.+\..+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} \d+ ".*" "(.*)"'
             return
 
-        m = re.match('^.+\..+\..+ .+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} \/.* HTTP.+" \d{3} .+ .+ ".+" ".+" ".+"', line)
+        m = re.match('^.+\..+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} \/.* HTTP.+" \d{3} .+ .+ ".+" ".+" ".+"', line)
         if m:
-            log['regex'] = '^(.+\..+\..+) .+ .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} .+ .+ ".*" "(.+)" ".*"'
-            return
-
-        m = re.match('^.+\..+\..*', line)
-        if m:
-            print "a"
-            sys.exit()
-            log['regex'] = '^(.+\..+\..+) .+ .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} .+ ".+"( )".*"' #No UA so we grab a space
+            log['regex'] = '^(.+\..+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} .+ .+ ".*" "(.+)" ".*"'
             return
 
     # If we have not returned already, there is no match. Exit
@@ -255,7 +248,7 @@ def main():
         print bcolors.GREEN + "[info] " + bcolors.ENDC + "No security events found."
 
     elif len(attacker) > 0:
-        print bcolors.RED + "\n--------------------------------------------------------\n   Found the following IPs (and associated activity)" + bcolors.ENDC
+        print bcolors.RED + "\n--------------------------------------------------------\n!!! Found the following hosts (and associated activity) !!!" + bcolors.ENDC
 
         #attacker.sort(key=operator.itemgetter('string'))
         for event in attacker:
