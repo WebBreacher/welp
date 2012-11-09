@@ -78,6 +78,12 @@ def rematch(line):      # Determine log type and set name/regex
             log['regex'] = '^(.+\..+\..+) .+ .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} .+ .+ ".*" "(.+)" ".*"'
             return
 
+        m = re.match('^.+\..+\..*', line)
+        if m:
+            print "a"
+            sys.exit()
+            log['regex'] = '^(.+\..+\..+) .+ .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} .+ ".+"( )".*"' #No UA so we grab a space
+            return
 
     # If we have not returned already, there is no match. Exit
     print bcolors.RED + "\n[Error] " + bcolors.ENDC + "No idea what kinda log you just submitted. Right now we only work on Apache 2.x access and error logs."
