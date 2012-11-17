@@ -10,14 +10,10 @@ Requirements: PHP-IDS default_filters.xml file, welpcore.py helper file.
 Usage: $ python welp.py [apache_log_fileto_parse]
 -------------------------------------------------------------------------------
  TODO (Overall)
- 1 - Add switches and flags
-    - -v or -q = verbosity
-    - --outformat
-    - -o = output location
-    - -i input file
-    - -m = multithreading?
+ 1 - Add output file flag content
  2 - Check if all IPs with events are being logged
  3 - Get the Apache Error parsing working
+ 4 - Fix REGEX with Mike's Access Log entries over 1100
  5 - Add verbosity switch to show all the output that was flagged
  6 - Make the output from the Categories and all attacks meaningful
  7 - Make output to a file
@@ -28,7 +24,7 @@ Usage: $ python welp.py [apache_log_fileto_parse]
 
 '''
 
-import os, sys, re, itertools, operator, signal, threading
+import os, sys, re, itertools, operator, signal, threading, argparse, textwrap
 from datetime import datetime
 from xml.dom import minidom
 from welpcore import *
@@ -100,7 +96,7 @@ def seen_ip_before(event):
 
     for actor in attacker:
         if event[0] in actor['ip']:
-            print bcolors.YELLOW + "[Found] New activity for %s; Line# %d." % (event[0],event[5])
+            if not args.q: print bcolors.YELLOW + "[Found] New activity for %s; Line# %d." % (event[0],event[5])
             actor['ua'].add(event[1])
             tt = datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")
             actor['date_all'].add(tt)
@@ -108,6 +104,11 @@ def seen_ip_before(event):
             if actor['date_earliest'] > tt : actor['date_earliest'] = tt
             if actor['date_recent'] < tt : actor['date_recent'] = tt
             actor['lines'].add(event[5])
+            if args.v:
+                print bcolors.DARKCYAN + "[verbose] Date: " + bcolors.ENDC + "%s" % event[2]
+                print bcolors.DARKCYAN + "[verbose] Attack: " + bcolors.ENDC + "%s" % event[3]
+                print bcolors.DARKCYAN + "[verbose] Line: " + bcolors.ENDC + "%s" % event[4]
+                print bcolors.DARKCYAN + "[verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6]
             return
 
     # Add new if we haven't had a match
@@ -121,13 +122,19 @@ def seen_ip_before(event):
                      'lines':set([event[5]])\
                      })
 
+    if args.v:
+        print bcolors.DARKCYAN + "[verbose] Date: " + bcolors.ENDC + "%s" % event[2]
+        print bcolors.DARKCYAN + "[verbose] Attack: " + bcolors.ENDC + "%s" % event[3]
+        print bcolors.DARKCYAN + "[verbose] Line: " + bcolors.ENDC + "%s" % event[4]
+        print bcolors.DARKCYAN + "[verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6]
+
 def findIt(line, line_counter, search_cat, search_strings):
 
     line_regex_split = re.search(log['regex'], line)
 
     # Some lines in the log we don't care about (notice, info...). So if we have no regex match discard those lines
     if line_regex_split == None:
-        print bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Skipping it." % line_counter
+        if args.v: print bcolors.DARKCYAN + "[verbose] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Skipping it." % line_counter
         return
 
     # Break down the log_file line into components
@@ -171,7 +178,7 @@ def findIt(line, line_counter, search_cat, search_strings):
         try:
             regex = re.compile(php_ids_rules[id])
         except:
-            print bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % id
+            if not args.q: print bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % id
             continue
 
         if regex.search(line):
@@ -181,23 +188,13 @@ def findIt(line, line_counter, search_cat, search_strings):
 
 def main():
 
-    line_counter = 1          # Counts the lines in the file
+    line_counter = 1          # Counts the lines in the parsed log file
 
-    print bcolors.GREEN + "\n[Start] " + bcolors.CYAN + "Starting the WELP script. Hang on."
-
-    # Check how many command line args were passed and provide HELP msg if not right
-    if len(sys.argv) == 2:
-        user_log_file=sys.argv[1]
-    else:
-        print bcolors.RED + "\n[Error] " + bcolors.ENDC + "You need to enter in the full logfile path and name such as: %s [logfilename]\n" % sys.argv[0]
-        sys.exit()
-
-
-    # TODO - Read in args for -t or --type and add those lists to the tests{}
     # For now, make a dictionary and lets do all tests
     tests = { 'User Agent': USER_AGENT_STRINGS, 'HTTP Method': HTTP_METHOD_LIST }
 
     # Open the log_file (or try to)
+    user_log_file = args.log_file_to_parse.name
     try:
         log_file = open(user_log_file,'r').readlines()
 
@@ -213,7 +210,7 @@ def main():
         sys.exit()
 
     # Cycle through all the PHP-IDS regexs and make a dictionary
-    print bcolors.BLUE + "[info] " + bcolors.ENDC + "Opened the PHP-IDS filter file and parsing the rules. "
+    if not args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Opened the PHP-IDS filter file and parsing the rules. "
     for filt in xmldoc.getElementsByTagName('filter'):
         descr_xml = filt.getElementsByTagName('description')[0].toxml()
         descr_content = descr_xml.replace('<description>','').replace('</description>','')
@@ -225,20 +222,19 @@ def main():
         try:
             regex = re.compile(rule_content)
         except:
-            print bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % descr_content
+            if not args.q: print bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % descr_content
             continue
 
         php_ids_rules[descr_content] = rule_content
 
     # Using line 1 - see what kind of log this is
-    if line_counter == 1:
-        print bcolors.BLUE + "[info] " + bcolors.ENDC + "Examining the log format"
-        rematch(log_file[0])
-        print bcolors.GREEN + "[info] " + bcolors.ENDC + "Log format found to be %s" % log['type']
+    if not args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Examining the log format"
+    rematch(log_file[0])
+    if not args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Log format found to be %s" % log['type']
 
 
     # Actually start to look for stuff
-    print bcolors.GREEN + "[info] " + bcolors.ENDC + "Analyzing the file:", user_log_file
+    if not args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Analyzing the file:", user_log_file
 
     # Pull each line of the file then perform all analysis
     for line in log_file:
@@ -251,8 +247,12 @@ def main():
         # Each line from the logfile spawns a new thread
         for key in tests:
             t = threading.Thread(target=findIt, args=(line.strip(), line_counter, key, tests[key]))
-            t.start()
+            try:
+                t.start()
+            except:
+                pass
 
+        t.join()
         line_counter += 1
 
     # Show the Results
@@ -267,10 +267,11 @@ def main():
             print bcolors.RED    +  "%s :" % event['ip']
             print bcolors.YELLOW +  "   Earliest Date Seen:   %s" % event['date_earliest']
             print                   "   Earliest Recent Seen: %s" % event['date_recent']
-            #print                   "\tAll Dates Seen:       %s" % ", ".join(event['date_all'])
+            #TODO print                   "\tAll Dates Seen:       %s" % ", ".join(event['date_all'])
             if len(event['ua']) != 0:
                 print bcolors.GREEN + "   User-Agents:\n\t- %s" % "\n\t- ".join(event['ua'])
             print bcolors.BLUE    + "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(event['attacks'])
+            #TODO wordwrap the line numbers displayed below
             print bcolors.PURPLE     + "   Line Numbers Where Attacks were Seen:\n\t- %s" % ", ".join(str(x) for x in event['lines'])
             print bcolors.ENDC + "---------------------------------------------------------------"
 
@@ -278,6 +279,19 @@ def main():
 #=================================================
 # START
 #=================================================
+print bcolors.GREEN + "\n[Start] " + bcolors.CYAN + "Starting the WELP script. Hang on." + bcolors.ENDC
+
+# Command Line Arguments
+parser = argparse.ArgumentParser(description='Scan error and access logs for known traces of scanners and then grab stats')
+parser.add_argument('log_file_to_parse', type=file, help='the log file that you want parsed')
+parser.add_argument('-v', action='store_true', default=False, help='Verbose output')
+parser.add_argument('-q', action='store_true', default=False, help='Minimal (Quiet) output')
+#TODO - parser.add_argument('-o', dest='outfile', help='Output file name [DEFAULT: stdout]')
+#TODO - parser.add_argument('-f', dest='out_format', choices='htx', default='t', help='The format you want the output to be in Html, Text, Xml. [DEFAULT: T=human readable color text]')
+args = parser.parse_args()
+
+if args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Quiet Mode'....shhh! Only important messages displayed."
+if args.v: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Verbose Mode'....brace yourself for additional information."
 
 if __name__ == "__main__": main()
 
