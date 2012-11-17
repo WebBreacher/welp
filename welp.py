@@ -4,23 +4,31 @@
 Name:        WELP - Web Error Log Processor
 Purpose:     Scan error and access logs for known traces of scanners and then grab stats
 Author:      Micah Hoffman (@WebBreacher)
+
+Requirements: PHP-IDS default_filters.xml file, welpcore.py helper file.
+
+Usage: $ python welp.py [apache_log_fileto_parse]
 -------------------------------------------------------------------------------
  TODO (Overall)
- 1 - Threading for the going through the file/searching
+ 1 - Add switches and flags
+    - -v or -q = verbosity
+    - --outformat
+    - -o = output location
+    - -i input file
+    - -m = multithreading?
  2 - Check if all IPs with events are being logged
  3 - Get the Apache Error parsing working
- 4 - Test with real log files from Internet-attached systems <--in progress
  5 - Add verbosity switch to show all the output that was flagged
  6 - Make the output from the Categories and all attacks meaningful
  7 - Make output to a file
  8 - Look for other anomalies such as known bad (RAT) strings (/w00t-w00t...)
  9 - Do analysis on the IPs found - lookup? Country?
- 10- Look at the HTTP response code for success or failure and only report 2xx
+ 10- Look at the HTTP response code for success or failure and ignore 300s and 400s
  11- Look at the HTTP response code and count # of each code each IP got (34 500s....)
 
 '''
 
-import os, sys, re, itertools, operator, signal
+import os, sys, re, itertools, operator, signal, threading
 from datetime import datetime
 from xml.dom import minidom
 from welpcore import *
@@ -39,6 +47,7 @@ HTTP_METHOD_LIST = ["options", "track", "trace"]
 attacker = [] #ip,ua,date_earliest,date_recent,date_all,cats,attacks,lines
 php_ids_rules = {}
 log = {}
+threads = []
 
 #=================================================
 # Functions & Classes
@@ -66,16 +75,16 @@ def rematch(line):      # Determine log type and set name/regex
     match = re.match("^.+\..+\..+ ", line)
     if match:
         log['type']="Apache2 Access"
-        # REGEX - 1=IP/domain, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=User Agent
+        # REGEX - 1=IP/domain, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=HTTP Response Code, 6=User Agent
         # Find specific format of Apache Log
         m = re.match('^.+\..+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} .* HTTP.+" \d{3} \d+ ".*" ".*"', line)
         if m:
-            log['regex'] = '^(.+\..+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} \d+ ".*" "(.*)"'
+            log['regex'] = '^(.+\..+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" (\d{3}) \d+ ".*" "(.*)"'
             return
 
         m = re.match('^.+\..+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} \/.* HTTP.+" \d{3} .+ .+ ".+" ".+" ".+"', line)
         if m:
-            log['regex'] = '^(.+\..+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" \d{3} .+ .+ ".*" "(.+)" ".*"'
+            log['regex'] = '^(.+\..+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" (\d{3}) .+ .+ ".*" "(.+)" ".*"'
             return
 
     # If we have not returned already, there is no match. Exit
@@ -83,7 +92,7 @@ def rematch(line):      # Determine log type and set name/regex
     sys.exit()
 
 def seen_ip_before(event):
-    # Apache Access = 0=remote_ip,1=user_agent,2=event_date,3=search_cat+attack,4=line,5=line#
+    # Apache Access = 0=remote_ip,1=user_agent,2=event_date,3=search_cat+attack,4=line,5=line#,6=http response
 
     # Grab just the needed parts of Nikto UA
     is_ua_nikto = re.search("\((Nikto/[0-9]\.[0-9]\.[0-9])\)", event[1])
@@ -140,7 +149,8 @@ def findIt(line, line_counter, search_cat, search_strings):
         event_date    = line_regex_split.group(2)
         http_method   = line_regex_split.group(3)
         url_requested = line_regex_split.group(4)
-        user_agent    = line_regex_split.group(5)
+        http_response = line_regex_split.group(5)
+        user_agent    = line_regex_split.group(6)
 
 
         # Set the spot in the log entry that we want to examine
@@ -153,7 +163,7 @@ def findIt(line, line_counter, search_cat, search_strings):
         for search_string in search_strings:
             if re.search(search_string, line, re.I):
                 # Add content to the attacker
-                event = [remote_ip,user_agent,event_date,search_cat + '-' + search_string,line,line_counter]
+                event = [remote_ip,user_agent,event_date,search_cat + '-' + search_string,line,line_counter,http_response]
                 seen_ip_before(event)
 
     # Look for PHP-IDS matches
@@ -238,8 +248,10 @@ def main():
         if re.search('^((127.0.0.1)|localhost)', line): continue
 
         # Cycle through each of the tests the user specified
+        # Each line from the logfile spawns a new thread
         for key in tests:
-            findIt(line.strip(), line_counter, key, tests[key])
+            t = threading.Thread(target=findIt, args=(line.strip(), line_counter, key, tests[key]))
+            t.start()
 
         line_counter += 1
 
