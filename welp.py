@@ -14,17 +14,14 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  2 - Check if all IPs with events are being logged
  3 - Get the Apache Error parsing working
  4 - Fix REGEX with Mike's Access Log entries over 1100
- 5 - Add verbosity switch to show all the output that was flagged
- 6 - Make the output from the Categories and all attacks meaningful
  7 - Make output to a file
  8 - Look for other anomalies such as known bad (RAT) strings (/w00t-w00t...)
- 9 - Do analysis on the IPs found - lookup? Country?
+ 9 - Do analysis on the IPs found - lookup? Country? maybe use other tool to do this?
  10- Look at the HTTP response code for success or failure and ignore 300s and 400s
  11- Look at the HTTP response code and count # of each code each IP got (34 500s....)
-
 '''
 
-import os, sys, re, itertools, operator, signal, threading, argparse, textwrap
+import os, sys, re, itertools, operator, signal, threading, argparse
 from datetime import datetime
 from xml.dom import minidom
 from welpcore import *
@@ -48,6 +45,29 @@ threads = []
 #=================================================
 # Functions & Classes
 #=================================================
+def word_wrap(string, width=80, ind1=0, ind2=0, prefix=''):
+    """ word wrapping function from http://www.saltycrane.com/blog/2007/09/python-word-wrap-function/
+        string: the string to wrap
+        width: the column number to wrap at
+        prefix: prefix each line with this string (goes before any indentation)
+        ind1: number of characters to indent the first line
+        ind2: number of characters to indent the rest of the lines
+    """
+    string = prefix + ind1 * " " + string
+    newstring = ""
+    while len(string) > width:
+        # find position of nearest whitespace char to the left of "width"
+        marker = width - 1
+        while not string[marker].isspace():
+            marker = marker - 1
+
+        # remove line from original string and add it to the new string
+        newline = string[0:marker] + "\n"
+        newstring = newstring + newline
+        string = prefix + ind2 * " " + string[marker + 1:]
+
+    return newstring + string
+
 def signal_handler(signal, frame):
     # TODO - This exits the loop line but not the application
     print bcolors.RED + '\nYou pressed Ctrl+C! Exiting.' + bcolors.ENDC
@@ -269,10 +289,9 @@ def main():
             print                   "   Earliest Recent Seen: %s" % event['date_recent']
             #TODO print                   "\tAll Dates Seen:       %s" % ", ".join(event['date_all'])
             if len(event['ua']) != 0:
-                print bcolors.GREEN + "   User-Agents:\n\t- %s" % "\n\t- ".join(event['ua'])
-            print bcolors.BLUE    + "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(event['attacks'])
-            #TODO wordwrap the line numbers displayed below
-            print bcolors.PURPLE     + "   Line Numbers Where Attacks were Seen:\n\t- %s" % ", ".join(str(x) for x in event['lines'])
+                print bcolors.GREEN + "   User-Agents:\n\t- %s" % "\n\t- ".join(sorted(event['ua']))
+            print bcolors.BLUE + "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(sorted(event['attacks']))
+            print bcolors.PURPLE + "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(str(x) for x in event['lines']), 79, 0, 10, "")
             print bcolors.ENDC + "---------------------------------------------------------------"
 
 
@@ -290,7 +309,7 @@ parser.add_argument('-q', action='store_true', default=False, help='Minimal (Qui
 #TODO - parser.add_argument('-f', dest='out_format', choices='htx', default='t', help='The format you want the output to be in Html, Text, Xml. [DEFAULT: T=human readable color text]')
 args = parser.parse_args()
 
-if args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Quiet Mode'....shhh! Only important messages displayed."
+if args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Quiet Mode'....shhh! Only important messages and new IPs/Hosts displayed."
 if args.v: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Verbose Mode'....brace yourself for additional information."
 
 if __name__ == "__main__": main()
