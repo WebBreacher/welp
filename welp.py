@@ -10,10 +10,8 @@ Requirements: PHP-IDS default_filters.xml file, welpcore.py helper file.
 Usage: $ python welp.py [apache_log_fileto_parse]
 -------------------------------------------------------------------------------
  TODO (Overall)
- 1 - Add output file flag content
  2 - Check if all IPs with events are being logged
  3 - Sort the IPs/host names of the events/attackers for output
- 7 - Make output to a file
  8 - Look for other anomalies such as known bad (RAT) strings (/w00t-w00t...)
  9 - Do analysis on the IPs found - lookup? Country? maybe use other tool to do this?
  10- Look at the HTTP response code for success or failure and ignore 300s and 400s
@@ -24,7 +22,6 @@ import os, sys, re, itertools, operator, signal, threading, argparse
 from datetime import datetime
 from xml.dom import minidom
 from welpcore import *
-
 
 #=================================================
 # Constants and Variables
@@ -72,6 +69,14 @@ def signal_handler(signal, frame):
     print bcolors.RED + '\nYou pressed Ctrl+C. Exiting.' + bcolors.ENDC
     sys.exit(1)
 
+def output(content):
+    # Send output to the correct place
+    if args.outfile:
+        #TODO - Need to strip all the coloring from the output before logging.
+        out_file.write(content + "\n")
+    else:
+        print content
+
 def rematch(line):      # Determine log type and set name/regex
     # Apache 2.x Access Log
     match = re.match("^.+\..+\..+ ", line)
@@ -90,7 +95,7 @@ def rematch(line):      # Determine log type and set name/regex
             return
 
     # If we have not returned already, there is no match. Exit
-    print bcolors.RED + "\n[Error] " + bcolors.ENDC + "No idea what kinda log you just submitted. Right now we only work on Apache 2.x access and error logs."
+    output(bcolors.RED + "\n[Error] " + bcolors.ENDC + "No idea what kinda log you just submitted. Right now we only work on Apache 2.x access and error logs.")
     sys.exit()
 
 def seen_ip_before(event):
@@ -102,7 +107,7 @@ def seen_ip_before(event):
 
     for actor in attacker:
         if event[0] in actor['ip']:
-            if not args.q: print bcolors.YELLOW + "[Found] Additional activity for " + bcolors.ENDC + "%s; Line# %d." % (event[0],event[5])
+            if not args.q: output(bcolors.YELLOW + "[Found] Additional activity for " + bcolors.ENDC + "%s; Line# %d." % (event[0],event[5]))
             actor['ua'].add(event[1])
             tt = datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")
             actor['date_all'].add(tt)
@@ -111,14 +116,14 @@ def seen_ip_before(event):
             if actor['date_recent'] < tt : actor['date_recent'] = tt
             actor['lines'].add(event[5])
             if args.v:
-                print bcolors.DARKCYAN + "  [verbose] Date: " + bcolors.ENDC + "%s" % event[2]
-                print bcolors.DARKCYAN + "  [verbose] Attack: " + bcolors.ENDC + "%s" % event[3]
-                print bcolors.DARKCYAN + "  [verbose] Match: " + bcolors.ENDC + "%s" % event[4]
-                print bcolors.DARKCYAN + "  [verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6]
+                output(bcolors.DARKCYAN + "  [verbose] Date: " + bcolors.ENDC + "%s" % event[2])
+                output(bcolors.DARKCYAN + "  [verbose] Attack: " + bcolors.ENDC + "%s" % event[3])
+                output(bcolors.DARKCYAN + "  [verbose] Match: " + bcolors.ENDC + "%s" % event[4])
+                output(bcolors.DARKCYAN + "  [verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6])
             return
 
     # Add new if we haven't had a match
-    print bcolors.PURPLE + "[Found] Making new record for " + bcolors.ENDC + "%s; Line# %d." % (event[0],event[5])
+    output(bcolors.PURPLE + "[Found] Making new record for " + bcolors.ENDC + "%s; Line# %d." % (event[0],event[5]))
     attacker.append({'ip': event[0],\
                      'ua': set([event[1]]),\
                      'date_earliest':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
@@ -129,10 +134,10 @@ def seen_ip_before(event):
                      })
 
     if args.v:
-        print bcolors.DARKCYAN + "  [verbose] Date: " + bcolors.ENDC + "%s" % event[2]
-        print bcolors.DARKCYAN + "  [verbose] Attack: " + bcolors.ENDC + "%s" % event[3]
-        print bcolors.DARKCYAN + "  [verbose] Match: " + bcolors.ENDC + "%s" % event[4]
-        print bcolors.DARKCYAN + "  [verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6]
+        output(bcolors.DARKCYAN + "  [verbose] Date: " + bcolors.ENDC + "%s" % event[2])
+        output(bcolors.DARKCYAN + "  [verbose] Attack: " + bcolors.ENDC + "%s" % event[3])
+        output(bcolors.DARKCYAN + "  [verbose] Match: " + bcolors.ENDC + "%s" % event[4])
+        output(bcolors.DARKCYAN + "  [verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6])
 
 def findIt(line, line_counter, search_cat, search_strings):
 
@@ -140,7 +145,7 @@ def findIt(line, line_counter, search_cat, search_strings):
 
     # Some lines in the log we don't care about (notice, info...). So if we have no regex match discard those lines
     if line_regex_split == None:
-        print bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Skipping it." % line_counter
+        output(bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Skipping it." % line_counter)
         return
 
     if log['type'] == "Apache2 Access":
@@ -172,7 +177,7 @@ def findIt(line, line_counter, search_cat, search_strings):
         try:
             regex = re.compile(php_ids_rules[id])
         except:
-            if not args.q: print bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % id
+            if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % id)
             continue
 
         if regex.search(line):
@@ -191,20 +196,20 @@ def main():
         log_file = open(user_log_file,'r').readlines()
 
     except (IOError) :
-        print bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't read file the logfile you entered."
+        output(bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't read file the logfile you entered.")
         sys.exit()
 
     # Open the PHP-IDS filter file - grab most recent from https://phpids.org/
     try:
         xmldoc = minidom.parse("default_filter.xml")
     except (IOError) :
-        print bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't read file the PHP-IDS default_filter.xml.\
+        output(bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't read file the PHP-IDS default_filter.xml.\
                                                            Please get the latest file from https://phpids.org/\
-                                                           and place the XML file in the same directory as this script.\n"
+                                                           and place the XML file in the same directory as this script.\n")
         sys.exit()
 
     # Cycle through all the PHP-IDS regexs and make a dictionary
-    if not args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Opened the PHP-IDS filter file and parsing the rules. "
+    if not args.q: output(bcolors.BLUE + "[info] " + bcolors.ENDC + "Opened the PHP-IDS filter file and parsing the rules. ")
     for filt in xmldoc.getElementsByTagName('filter'):
         descr_xml = filt.getElementsByTagName('description')[0].toxml()
         descr_content = descr_xml.replace('<description>','').replace('</description>','')
@@ -216,18 +221,17 @@ def main():
         try:
             regex = re.compile(rule_content)
         except:
-            if not args.q: print bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % descr_content
+            if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % descr_content)
             continue
 
         php_ids_rules[descr_content] = rule_content
 
     # Using line 1 - see what kind of log this is
-    if not args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Examining the log format"
     rematch(log_file[0])
-    if not args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Log format found to be %s" % log['type']
+    if not args.q: output(bcolors.BLUE + "[info] " + bcolors.ENDC + "Log format found to be %s" % log['type'])
 
     # Actually start to look for stuff
-    if not args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Analyzing the file:", user_log_file
+    if not args.q: output(bcolors.BLUE + "[info] " + bcolors.ENDC + "Analyzing the file: %s" % user_log_file)
 
     # Pull each line of the file then perform all analysis
     for line in log_file:
@@ -250,22 +254,22 @@ def main():
 
     # Show the Results
     if len(attacker) == 0:
-        print bcolors.GREEN + "[info] " + bcolors.ENDC + "No security events found."
+        output(bcolors.GREEN + "[info] " + bcolors.ENDC + "No security events found.")
 
     elif len(attacker) > 0:
-        print bcolors.GREEN + "\n-+-+- Found the following hosts (and associated activity) -+-+-\n" + bcolors.ENDC
+        output(bcolors.GREEN + "\n-+-+- Found the following hosts (and associated activity) -+-+-\n" + bcolors.ENDC)
 
         #TODO - attacker.sort(key=operator.itemgetter('string'))
         for event in attacker:
-            print bcolors.RED    +    "%s :" % event['ip']
-            print bcolors.YELLOW +    "   Earliest Date Seen:   %s" % event['date_earliest']
-            print                     "   Earliest Recent Seen: %s" % event['date_recent']
+            output(bcolors.RED    +    "%s :" % event['ip'])
+            output(bcolors.YELLOW +    "   Earliest Date Seen:   %s" % event['date_earliest'])
+            output(                    "   Earliest Recent Seen: %s" % event['date_recent'])
             #TODO print                   "\tAll Dates Seen:       %s" % ", ".join(event['date_all'])
             if len(event['ua']) != 0:
-                print bcolors.GREEN + "   User-Agents:\n\t- %s" % "\n\t- ".join(sorted(event['ua']))
-            print bcolors.BLUE +      "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(sorted(event['attacks']))
-            print bcolors.PURPLE +    "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(str(x) for x in event['lines']), 79, 0, 10, "")
-            print bcolors.ENDC + "---------------------------------------------------------------"
+                output(bcolors.GREEN + "   User-Agents:\n\t- %s" % "\n\t- ".join(sorted(event['ua'])))
+            output(bcolors.BLUE +      "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(sorted(event['attacks'])))
+            output(bcolors.PURPLE +    "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(str(x) for x in event['lines']), 79, 0, 10, ""))
+            output(bcolors.ENDC + "---------------------------------------------------------------")
 
 
 #=================================================
@@ -278,13 +282,21 @@ parser = argparse.ArgumentParser(description='Scan error and access logs for kno
 parser.add_argument('log_file_to_parse', type=file, help='the log file that you want parsed')
 parser.add_argument('-v', action='store_true', default=False, help='Verbose output')
 parser.add_argument('-q', action='store_true', default=False, help='Minimal (Quiet) output')
-#TODO - parser.add_argument('-o', dest='outfile', help='Output file name [DEFAULT: stdout]')
+parser.add_argument('-o', dest='outfile', help='Output file name [DEFAULT: stdout/no file]')
 #TODO - parser.add_argument('-f', dest='out_format', choices='htx', default='t', help='The format you want the output to be in Html, Text, Xml. [DEFAULT: T=human readable color text]')
 args = parser.parse_args()
 
 if args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Quiet Mode'....shhh! Only important messages and new IPs/Hosts displayed."
 if args.v: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Verbose Mode'....brace yourself for additional information."
+if args.outfile:
+    out_file = open(args.outfile, 'w')
+    print bcolors.BLUE + "[info] " + bcolors.ENDC + "Saving all further output to %s" % args.outfile
+
+    '''except:
+        print bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't open the output file you specified for writing.\n"
+        sys.exit()'''
 
 if __name__ == "__main__": main()
 
-print bcolors.GREEN + "\n[Finished] " + bcolors.CYAN + "WELP script completed.\n"
+output(bcolors.GREEN + "\n[Finished] " + bcolors.CYAN + "WELP script completed.\n")
+if args.outfile: out_file.close()
