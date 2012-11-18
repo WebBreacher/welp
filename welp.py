@@ -73,9 +73,9 @@ def rematch(line):      # Determine log type and set name/regex
         log['type']="Apache2 Access"
         # REGEX - 1=IP/domain, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=HTTP Response Code, 6=User Agent
         # Find specific format of Apache Log
-        m = re.match('^.+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} .* HTTP.+" \d{3} \d+ ".*" ".*"', line)
+        m = re.match('^.+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} .* HTTP.+" \d{3} .+ ".*" ".*"', line)
         if m:
-            log['regex'] = '^(.+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" (\d{3}) \d+ ".*" "(.*)"'
+            log['regex'] = '^(.+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" (\d{3}) .+ ".*" "(.*)"'
             return
 
         m = re.match('^.+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} \/.* HTTP.+" \d{3} .+ .+ ".+" ".+" ".+"', line)
@@ -242,8 +242,8 @@ def main():
     for line in log_file:
         signal.signal(signal.SIGINT, signal_handler)    # Trap Ctrl-C
 
-        # If the log traffic is from 127.0.0.1|localhost, ignore it
-        if re.search('^((127.0.0.1)|localhost)', line): continue
+        # If the log traffic is from 127.0.0.1|localhost|nonwordchar, ignore it
+        if re.search('^(127\.0\.0\.1|localhost|\W)', line): continue
 
         # Cycle through each of the tests the user specified
         # Each line from the logfile spawns a new thread
