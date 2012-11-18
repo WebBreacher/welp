@@ -13,6 +13,9 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  1 - Uncolor output going to outfile
  2 - Get XML output working
  3 - Sort the IPs/host names of the events/attackers for output
+ 4 - Check to ensure that the PHP-IDS regexes work
+ 5 - Add RESTRICTED_EXT to the list of things to test (and see is they work)
+ 6 - Check to ensure that the SYMANTEC_REGEX work
  8 - Look for other anomalies such as known bad (RAT) strings (/w00t-w00t...)
  9 - Do analysis on the IPs found - lookup? Country? maybe use other tool to do this?
  10- Look at the HTTP response code for success or failure and ignore 300s and 400s
@@ -31,7 +34,20 @@ from welpcore import *
 # Pulled from ModSecurity modsecurity_35_scanners.data
 USER_AGENT_STRINGS = [".nasl","absinthe","acunetix", "arachni","bilbo","black widow","blackwidow","brutus","bsqlbf","burp","cgichk","dirbuster","grabber","grendel-scan","havij","hydra","jaascois","metis","mozilla/4.0 (compatible)","mozilla/4.0 (compatible; msie 6.0; win32)","mozilla/5.0 sf//","n-stealth","nessus","netsparker","nikto","nmap nse","nsauditor","pangolin","paros","pmafind","python-httplib2","sql power injector","sqlmap","sqlninja","w3af","webinspect","webtrends security analyzer"]
 
-HTTP_METHOD_LIST = ["options", "track", "trace"] #Less frequently used HTTP Methods
+HTTP_METHOD_LIST = ["GET", "POST", "OPTIONS", "HEAD"] #Frequently used HTTP Methods
+
+# From http://www.symantec.com/connect/articles/detection-sql-injection-and-cross-site-scripting-attacks
+SYMANTEC_REGEX = {	'SQL Metachars':'/(\%27)|(\')|(\-\-)|(\%23)|(#)/ix',
+					'SQL Metachars2':'/((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))/i',
+					'SQL Injection (typical)':'/\w*((\%27)|(\'))((\%6F)|o|(\%4F))((\%72)|r|(\%52))/ix',
+					'SQL Injection (UNION)':'/((\%27)|(\'))union/ix',
+					'SQL Injection (MSSQL)':'/exec(\s|\+)+(s|x)p\w+/ix',
+					'XSS (typical)':'/((\%3C)|<)((\%2F)|\/)*[a-z0-9\%]+((\%3E)|>)/ix',
+					'XSS (img src)':'/((\%3C)|<)((\%69)|i|(\%49))((\%6D)|m|(\%4D))((\%67)|g|(\%47))[^\n]+((\%3E)|>)/I',
+					'XSS (paranoid)':'/((\%3C)|<)[^\n]+((\%3E)|>)/I'}
+
+# From ModSecurity Rules
+RESTRICTED_EXT = ['.asa', '.asax', '.ascx', '.axd', '.backup', '.bak', '.bat', '.cdx', '.cer', '.cfg', '.cmd', '.com', '.config', '.conf', '.cs', '.csproj', '.csr', '.dat', '.db', '.dbf', '.dll', '.dos', '.htr', '.htw', '.ida', '.idc', '.idq', '.inc', '.ini', '.key', '.licx', '.lnk', '.log', '.mdb', '.old', '.pass', '.pdb', '.pol', '.printer', '.pwd', '.resources', '.resx', '.sql', '.sys', '.vb', '.vbs', '.vbproj', '.vsdisco', '.webinfo', '.xsd', '.xsx']
 
 attacker = [] #ip,ua,date_earliest,date_recent,date_all,cats,attacks,lines
 php_ids_rules = {}
@@ -134,29 +150,45 @@ def findIt(line, line_counter, search_cat, search_strings):
 
         # Set the spot in the log entry that we want to examine
         if search_cat == 'HTTP Method':
-            line = http_method          # Regex for HTTP Method is the first group
-        elif search_cat == 'User Agent':
-            line = user_agent           # Regex for the User Agent is second group
-
-        # Look for search_strings
-        for search_string in search_strings:
-            if re.search(search_string, line, re.I):
-                # Add content to the attacker
-                event = [remote_ip,user_agent,event_date,search_cat + '-' + search_string,line,line_counter,http_response]
+            if http_method not in search_strings:
+                event = [remote_ip,user_agent,event_date,search_cat + ' - ' + http_method,line,line_counter,http_response]
                 seen_ip_before(event)
+        elif search_cat == 'User Agent':
+            line = user_agent
 
-    # Look for PHP-IDS matches
-    for id in php_ids_rules.keys():
-        try:
-            regex = re.compile(php_ids_rules[id])
-        except:
-            if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule: '%s' failed. Skipping it." % id)
-            continue
+            # Look for search_strings
+            for search_string in search_strings:
+                if re.search(search_string, line, re.I):
+                    # Add content to the attacker
+                    event = [remote_ip,user_agent,event_date,search_cat + ' - ' + search_string,line,line_counter,http_response]
+                    seen_ip_before(event)
 
-        if regex.search(line):
-            # Add content to the attacker list of dictionaries
-            event = [remote_ip,user_agent,event_date,'PHP-IDS Rule -' + id, line, line_counter]
-            seen_ip_before(event)
+        else:
+            # Look for PHP-IDS matches
+            for id in php_ids_rules.keys():
+                try:
+                    regex = re.compile(php_ids_rules[id])
+                except:
+                    if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule: '%s' failed. Skipping it." % id)
+                    continue
+
+                if regex.search(line):
+                    # Add content to the attacker list of dictionaries
+                    event = [remote_ip,user_agent,event_date,'PHP-IDS Rule - ' + id, line, line_counter,http_response]
+                    seen_ip_before(event)
+
+            # Look for SYMANTEC_REGEX matches
+            for id in SYMANTEC_REGEX.keys():
+                try:
+                    regex = re.compile(SYMANTEC_REGEX[id])
+                except:
+                    if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling SYMANTEC REGEX rule: '%s' failed. Skipping it." % id)
+                    continue
+
+                if regex.search(line):
+                    # Add content to the attacker list of dictionaries
+                    event = [remote_ip,user_agent,event_date,'SYMANTEC REGEX Rule - ' + id, line, line_counter,http_response]
+                    seen_ip_before(event)
 
 def main():
 
@@ -242,7 +274,7 @@ def main():
             if len(event['ua']) != 0:
                 output(bcolors.GREEN + "   User-Agents:\n\t- %s" % "\n\t- ".join(sorted(event['ua'])))
             output(bcolors.BLUE +      "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(sorted(event['attacks'])))
-            output(bcolors.PURPLE +    "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(str(x) for x in event['lines']), 79, 0, 10, ""))
+            output(bcolors.DARKCYAN +  "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(str(x) for x in event['lines']), 79, 0, 10, ""))
             output(bcolors.ENDC + "---------------------------------------------------------------")
 
 
@@ -266,9 +298,6 @@ if args.outfile:
     out_file = open(args.outfile, 'w')
     print bcolors.BLUE + "[info] " + bcolors.ENDC + "Saving all further output to %s" % args.outfile
 
-    '''except:
-        print bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't open the output file you specified for writing.\n"
-        sys.exit()'''
 
 if __name__ == "__main__": main()
 
