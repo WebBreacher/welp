@@ -12,7 +12,7 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  TODO (Overall)
  1 - Add output file flag content
  2 - Check if all IPs with events are being logged
- 4 - Fix REGEX with Mike's Access Log entries over 1100
+ 3 - Sort the IPs/host names of the events/attackers for output
  7 - Make output to a file
  8 - Look for other anomalies such as known bad (RAT) strings (/w00t-w00t...)
  9 - Do analysis on the IPs found - lookup? Country? maybe use other tool to do this?
@@ -69,7 +69,7 @@ def word_wrap(string, width=80, ind1=0, ind2=0, prefix=''):
 
 def signal_handler(signal, frame):
     # TODO - This exits the loop line but not the application
-    print bcolors.RED + '\nYou pressed Ctrl+C! Exiting.' + bcolors.ENDC
+    print bcolors.RED + '\nYou pressed Ctrl+C. Exiting.' + bcolors.ENDC
     sys.exit(1)
 
 def rematch(line):      # Determine log type and set name/regex
@@ -102,7 +102,7 @@ def seen_ip_before(event):
 
     for actor in attacker:
         if event[0] in actor['ip']:
-            if not args.q: print bcolors.YELLOW + "[Found] New activity for %s; Line# %d." % (event[0],event[5])
+            if not args.q: print bcolors.YELLOW + "[Found] Additional activity for " + bcolors.ENDC + "%s; Line# %d." % (event[0],event[5])
             actor['ua'].add(event[1])
             tt = datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")
             actor['date_all'].add(tt)
@@ -111,14 +111,14 @@ def seen_ip_before(event):
             if actor['date_recent'] < tt : actor['date_recent'] = tt
             actor['lines'].add(event[5])
             if args.v:
-                print bcolors.DARKCYAN + "[verbose] Date: " + bcolors.ENDC + "%s" % event[2]
-                print bcolors.DARKCYAN + "[verbose] Attack: " + bcolors.ENDC + "%s" % event[3]
-                print bcolors.DARKCYAN + "[verbose] Line: " + bcolors.ENDC + "%s" % event[4]
-                print bcolors.DARKCYAN + "[verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6]
+                print bcolors.DARKCYAN + "  [verbose] Date: " + bcolors.ENDC + "%s" % event[2]
+                print bcolors.DARKCYAN + "  [verbose] Attack: " + bcolors.ENDC + "%s" % event[3]
+                print bcolors.DARKCYAN + "  [verbose] Match: " + bcolors.ENDC + "%s" % event[4]
+                print bcolors.DARKCYAN + "  [verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6]
             return
 
     # Add new if we haven't had a match
-    print bcolors.PURPLE + "[Found] Making new record for %s; Line# %d." % (event[0],event[5])
+    print bcolors.PURPLE + "[Found] Making new record for " + bcolors.ENDC + "%s; Line# %d." % (event[0],event[5])
     attacker.append({'ip': event[0],\
                      'ua': set([event[1]]),\
                      'date_earliest':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
@@ -129,10 +129,10 @@ def seen_ip_before(event):
                      })
 
     if args.v:
-        print bcolors.DARKCYAN + "[verbose] Date: " + bcolors.ENDC + "%s" % event[2]
-        print bcolors.DARKCYAN + "[verbose] Attack: " + bcolors.ENDC + "%s" % event[3]
-        print bcolors.DARKCYAN + "[verbose] Line: " + bcolors.ENDC + "%s" % event[4]
-        print bcolors.DARKCYAN + "[verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6]
+        print bcolors.DARKCYAN + "  [verbose] Date: " + bcolors.ENDC + "%s" % event[2]
+        print bcolors.DARKCYAN + "  [verbose] Attack: " + bcolors.ENDC + "%s" % event[3]
+        print bcolors.DARKCYAN + "  [verbose] Match: " + bcolors.ENDC + "%s" % event[4]
+        print bcolors.DARKCYAN + "  [verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6]
 
 def findIt(line, line_counter, search_cat, search_strings):
 
@@ -183,8 +183,6 @@ def findIt(line, line_counter, search_cat, search_strings):
 def main():
 
     line_counter = 1          # Counts the lines in the parsed log file
-
-    # For now, make a dictionary and lets do all tests
     tests = { 'User Agent': USER_AGENT_STRINGS, 'HTTP Method': HTTP_METHOD_LIST }
 
     # Open the log_file (or try to)
@@ -200,7 +198,9 @@ def main():
     try:
         xmldoc = minidom.parse("default_filter.xml")
     except (IOError) :
-        print bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't read file the PHP-IDS default_filter.xml. Please get the latest file from https://phpids.org/ and place the XML file in the same directory as this script.\n"
+        print bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't read file the PHP-IDS default_filter.xml.\
+                                                           Please get the latest file from https://phpids.org/\
+                                                           and place the XML file in the same directory as this script.\n"
         sys.exit()
 
     # Cycle through all the PHP-IDS regexs and make a dictionary
@@ -253,9 +253,9 @@ def main():
         print bcolors.GREEN + "[info] " + bcolors.ENDC + "No security events found."
 
     elif len(attacker) > 0:
-        print bcolors.RED + "\n--------------------------------------------------------\n-+-+- Found the following hosts (and associated activity) -+-+-" + bcolors.ENDC
+        print bcolors.GREEN + "\n-+-+- Found the following hosts (and associated activity) -+-+-\n" + bcolors.ENDC
 
-        #attacker.sort(key=operator.itemgetter('string'))
+        #TODO - attacker.sort(key=operator.itemgetter('string'))
         for event in attacker:
             print bcolors.RED    +    "%s :" % event['ip']
             print bcolors.YELLOW +    "   Earliest Date Seen:   %s" % event['date_earliest']
