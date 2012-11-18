@@ -1,8 +1,8 @@
 #!/usr/bin/python -tt
 '''
 -------------------------------------------------------------------------------
-Name:        WELP - Web Error Log Processor
-Purpose:     Scan error and access logs for known traces of scanners and then grab stats
+Name:        WELP - Web Event Log Processor
+Purpose:     Scan access logs for known traces of scanners and then grab stats
 Author:      Micah Hoffman (@WebBreacher)
 
 Requirements: PHP-IDS default_filters.xml file, welpcore.py helper file.
@@ -12,7 +12,6 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  TODO (Overall)
  1 - Add output file flag content
  2 - Check if all IPs with events are being logged
- 3 - Get the Apache Error parsing working
  4 - Fix REGEX with Mike's Access Log entries over 1100
  7 - Make output to a file
  8 - Look for other anomalies such as known bad (RAT) strings (/w00t-w00t...)
@@ -74,33 +73,20 @@ def signal_handler(signal, frame):
     sys.exit(1)
 
 def rematch(line):      # Determine log type and set name/regex
-    # Apache 2.x Error Log
-    match = re.match("^\[[A-Z][a-z]{2} ", line)
-    if match:
-        # TODO - Get this working to analyze error logs
-        print bcolors.RED + '\nYou Apache Error Log detected. Right now we only do Apache Access Logs. Sorry. Exiting.' + bcolors.ENDC
-        sys.exit()
-
-        log['type']="Apache2 Error"
-        # TODO - Make this strip off/ignore the referrer if it is there - regex not working
-        # REGEX - 1=Date/Time of the activity, 2=IP, 3=URL Requested
-        log['regex']="^\[([SMTWF].*)\] \[error\] \[client (\d.*)\] (.*), referer.*"
-        return log
-
     # Apache 2.x Access Log
     match = re.match("^.+\..+\..+ ", line)
     if match:
         log['type']="Apache2 Access"
         # REGEX - 1=IP/domain, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=HTTP Response Code, 6=User Agent
         # Find specific format of Apache Log
-        m = re.match('^.+\..+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} .* HTTP.+" \d{3} \d+ ".*" ".*"', line)
+        m = re.match('^.+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} .* HTTP.+" \d{3} \d+ ".*" ".*"', line)
         if m:
-            log['regex'] = '^(.+\..+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" (\d{3}) \d+ ".*" "(.*)"'
+            log['regex'] = '^(.+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" (\d{3}) \d+ ".*" "(.*)"'
             return
 
-        m = re.match('^.+\..+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} \/.* HTTP.+" \d{3} .+ .+ ".+" ".+" ".+"', line)
+        m = re.match('^.+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} \/.* HTTP.+" \d{3} .+ .+ ".+" ".+" ".+"', line)
         if m:
-            log['regex'] = '^(.+\..+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" (\d{3}) .+ .+ ".*" "(.+)" ".*"'
+            log['regex'] = '^(.+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" (\d{3}) .+ .+ ".*" "(.+)" ".*"'
             return
 
     # If we have not returned already, there is no match. Exit
@@ -154,22 +140,10 @@ def findIt(line, line_counter, search_cat, search_strings):
 
     # Some lines in the log we don't care about (notice, info...). So if we have no regex match discard those lines
     if line_regex_split == None:
-        if args.v: print bcolors.DARKCYAN + "[verbose] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Skipping it." % line_counter
+        print bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Skipping it." % line_counter
         return
 
-    # Break down the log_file line into components
-    if log['type'] == "Apache2 Error":
-
-        # Assign easy to understand variables
-        remote_ip     = line_regex_split.group(2)
-        event_date    = line_regex_split.group(1)
-        error_thrown  = line_regex_split.group(3)
-        user_agent    = 'Error Log. No U/A'
-
-        # Set the spot in the log entry that we want to examine
-        line = error_thrown
-
-    elif log['type'] == "Apache2 Access":
+    if log['type'] == "Apache2 Access":
 
         # Assign easy to understand variables
         remote_ip     = line_regex_split.group(1)
@@ -252,7 +226,6 @@ def main():
     rematch(log_file[0])
     if not args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Log format found to be %s" % log['type']
 
-
     # Actually start to look for stuff
     if not args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Analyzing the file:", user_log_file
 
@@ -280,18 +253,18 @@ def main():
         print bcolors.GREEN + "[info] " + bcolors.ENDC + "No security events found."
 
     elif len(attacker) > 0:
-        print bcolors.RED + "\n--------------------------------------------------------\n!!! Found the following hosts (and associated activity) !!!" + bcolors.ENDC
+        print bcolors.RED + "\n--------------------------------------------------------\n-+-+- Found the following hosts (and associated activity) -+-+-" + bcolors.ENDC
 
         #attacker.sort(key=operator.itemgetter('string'))
         for event in attacker:
-            print bcolors.RED    +  "%s :" % event['ip']
-            print bcolors.YELLOW +  "   Earliest Date Seen:   %s" % event['date_earliest']
-            print                   "   Earliest Recent Seen: %s" % event['date_recent']
+            print bcolors.RED    +    "%s :" % event['ip']
+            print bcolors.YELLOW +    "   Earliest Date Seen:   %s" % event['date_earliest']
+            print                     "   Earliest Recent Seen: %s" % event['date_recent']
             #TODO print                   "\tAll Dates Seen:       %s" % ", ".join(event['date_all'])
             if len(event['ua']) != 0:
                 print bcolors.GREEN + "   User-Agents:\n\t- %s" % "\n\t- ".join(sorted(event['ua']))
-            print bcolors.BLUE + "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(sorted(event['attacks']))
-            print bcolors.PURPLE + "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(str(x) for x in event['lines']), 79, 0, 10, "")
+            print bcolors.BLUE +      "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(sorted(event['attacks']))
+            print bcolors.PURPLE +    "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(str(x) for x in event['lines']), 79, 0, 10, "")
             print bcolors.ENDC + "---------------------------------------------------------------"
 
 
@@ -314,4 +287,4 @@ if args.v: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Verbose Mo
 
 if __name__ == "__main__": main()
 
-print bcolors.GREEN + "\n[Finished] " + bcolors.CYAN + "WELP script completed with %d IPs identified.\n" % len(attacker)
+print bcolors.GREEN + "\n[Finished] " + bcolors.CYAN + "WELP script completed.\n"
