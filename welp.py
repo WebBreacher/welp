@@ -10,7 +10,8 @@ Requirements: PHP-IDS default_filters.xml file, welpcore.py helper file.
 Usage: $ python welp.py [apache_log_fileto_parse]
 -------------------------------------------------------------------------------
  TODO (Overall)
- 2 - Check if all IPs with events are being logged
+ 1 - Uncolor output going to outfile
+ 2 - Get XML output working
  3 - Sort the IPs/host names of the events/attackers for output
  8 - Look for other anomalies such as known bad (RAT) strings (/w00t-w00t...)
  9 - Do analysis on the IPs found - lookup? Country? maybe use other tool to do this?
@@ -30,8 +31,7 @@ from welpcore import *
 # Pulled from ModSecurity modsecurity_35_scanners.data
 USER_AGENT_STRINGS = [".nasl","absinthe","acunetix", "arachni","bilbo","black widow","blackwidow","brutus","bsqlbf","burp","cgichk","dirbuster","grabber","grendel-scan","havij","hydra","jaascois","metis","mozilla/4.0 (compatible)","mozilla/4.0 (compatible; msie 6.0; win32)","mozilla/5.0 sf//","n-stealth","nessus","netsparker","nikto","nmap nse","nsauditor","pangolin","paros","pmafind","python-httplib2","sql power injector","sqlmap","sqlninja","w3af","webinspect","webtrends security analyzer"]
 
-HTTP_METHOD_LIST = ["options", "track", "trace"]
-
+HTTP_METHOD_LIST = ["options", "track", "trace"] #Less frequently used HTTP Methods
 
 attacker = [] #ip,ua,date_earliest,date_recent,date_all,cats,attacks,lines
 php_ids_rules = {}
@@ -41,33 +41,6 @@ threads = []
 #=================================================
 # Functions & Classes
 #=================================================
-def word_wrap(string, width=80, ind1=0, ind2=0, prefix=''):
-    """ word wrapping function from http://www.saltycrane.com/blog/2007/09/python-word-wrap-function/
-        string: the string to wrap
-        width: the column number to wrap at
-        prefix: prefix each line with this string (goes before any indentation)
-        ind1: number of characters to indent the first line
-        ind2: number of characters to indent the rest of the lines
-    """
-    string = prefix + ind1 * " " + string
-    newstring = ""
-    while len(string) > width:
-        # find position of nearest whitespace char to the left of "width"
-        marker = width - 1
-        while not string[marker].isspace():
-            marker = marker - 1
-
-        # remove line from original string and add it to the new string
-        newline = string[0:marker] + "\n"
-        newstring = newstring + newline
-        string = prefix + ind2 * " " + string[marker + 1:]
-
-    return newstring + string
-
-def signal_handler(signal, frame):
-    # TODO - This exits the loop line but not the application
-    print bcolors.RED + '\nYou pressed Ctrl+C. Exiting.' + bcolors.ENDC
-    sys.exit(1)
 
 def output(content):
     # Send output to the correct place
@@ -177,7 +150,7 @@ def findIt(line, line_counter, search_cat, search_strings):
         try:
             regex = re.compile(php_ids_rules[id])
         except:
-            if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % id)
+            if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule: '%s' failed. Skipping it." % id)
             continue
 
         if regex.search(line):
@@ -251,6 +224,7 @@ def main():
 
         t.join()
         line_counter += 1
+        if not args.q: status_message(int(line_counter),int(len(log_file)))
 
     # Show the Results
     if len(attacker) == 0:
