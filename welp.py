@@ -96,7 +96,7 @@ def seen_ip_before(event):
     for actor in attacker:
         if event[0] in actor['ip']:
             if not args.q: output(bcolors.YELLOW + "[Found] Additional activity for " + bcolors.ENDC + "%s; Line# %d." % (event[0],event[5]))
-            actor['ua'].add(event[1])
+            if len(event[1]) > 1: actor['ua'].add(event[1])
             tt = datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")
             actor['date_all'].add(tt)
             actor['attacks'].add(event[3])
@@ -110,16 +110,26 @@ def seen_ip_before(event):
                 output(bcolors.DARKCYAN + "  [verbose] Server HTTP Response: " + bcolors.ENDC + "%s" % event[6])
             return
 
-    # Add new if we haven't had a match
+    # Add a new entry if we do not already have an entry
     output(bcolors.PURPLE + "[Found] Making new record for " + bcolors.ENDC + "%s; Line# %d." % (event[0],event[5]))
-    attacker.append({'ip': event[0],\
-                     'ua': set([event[1]]),\
-                     'date_earliest':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
-                     'date_recent':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
-                     'date_all':set([datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")]),\
-                     'attacks':set([event[3]]),\
-                     'lines':set([event[5]])\
-                     })
+    if len(event[1]) > 1:
+        attacker.append({'ip': event[0],\
+                         'ua': set([event[1]]),\
+                         'date_earliest':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
+                         'date_recent':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
+                         'date_all':set([datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")]),\
+                         'attacks':set([event[3]]),\
+                         'lines':set([event[5]])\
+                         })
+    else:
+        attacker.append({'ip': event[0],\
+                         'ua': set([]),\
+                         'date_earliest':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
+                         'date_recent':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
+                         'date_all':set([datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")]),\
+                         'attacks':set([event[3]]),\
+                         'lines':set([event[5]])\
+                         })
 
     if args.v:
         output(bcolors.DARKCYAN + "  [verbose] Date: " + bcolors.ENDC + "%s" % event[2])
@@ -161,19 +171,23 @@ def findIt(line, line_counter, search_cat, search_strings):
                     seen_ip_before(event)
 
         # Look for PHP-IDS matches
-        for id in php_ids_rules.keys():
-            # FP rules - #43 Detects classic SQL injection probings 2/2, #23 Detects JavaScript location/document property access and window access obfuscation
-            if (id == 'Detects classic SQL injection probings 2/2') or (id == 'Detects JavaScript location/document property access and window access obfuscation'): continue #Skip False Positive REGEXES
-            try:
-                regex = re.compile(php_ids_rules[id])
-            except:
-                if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule: '%s' failed. Skipping it." % id)
-                continue
+        if args.p:
+            for id in php_ids_rules.keys():
+                ''' FP rules:
+                       #43 Detects classic SQL injection probings 2/2,
+                       #23 Detects JavaScript location/document property access and window access obfuscation'''
 
-            if regex.search(line):
-                # Add content to the attacker list of dictionaries
-                event = [remote_ip,user_agent,event_date,'PHP-IDS Rule - ' + id, line, line_counter,http_response]
-                seen_ip_before(event)
+                if (id == 'Detects classic SQL injection probings 2/2') or (id == 'Detects JavaScript location/document property access and window access obfuscation'): continue #Skip False Positive REGEXES
+                try:
+                    regex = re.compile(php_ids_rules[id])
+                except:
+                    if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule: '%s' failed. Skipping it." % id)
+                    continue
+
+                if regex.search(line):
+                    # Add content to the attacker list of dictionaries
+                    event = [remote_ip,user_agent,event_date,'PHP-IDS Rule - ' + id, line, line_counter,http_response]
+                    seen_ip_before(event)
 
         # Look for SYMANTEC_REGEX matches
         for id in SYMANTEC_REGEX.keys():
@@ -198,32 +212,33 @@ def main():
         output(bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't read file the logfile you entered.")
         sys.exit()
 
-    # Open the PHP-IDS filter file - grab most recent from https://phpids.org/
-    try:
-        xmldoc = minidom.parse("default_filter.xml")
-    except (IOError) :
-        output(bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't read file the PHP-IDS default_filter.xml.\
-                                                           Please get the latest file from https://phpids.org/\
-                                                           and place the XML file in the same directory as this script.\n")
-        sys.exit()
-
-    # Cycle through all the PHP-IDS regexs and make a dictionary
-    if not args.q: output(bcolors.BLUE + "[info] " + bcolors.ENDC + "Opened the PHP-IDS filter file and parsing the rules. ")
-    for filt in xmldoc.getElementsByTagName('filter'):
-        descr_xml = filt.getElementsByTagName('description')[0].toxml()
-        descr_content = descr_xml.replace('<description>','').replace('</description>','')
-        rule_xml = filt.getElementsByTagName('rule')[0].toxml()
-        rule_content = rule_xml.replace('<rule>','').replace('</rule>','')
-        rule_content = rule_content.replace("<![CDATA[", "")
-        rule_content = rule_content.replace("]]>", "")
-
+    if args.p:
+        # Open the PHP-IDS filter file - grab most recent from https://phpids.org/
         try:
-            regex = re.compile(rule_content)
-        except:
-            if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % descr_content)
-            continue
+            xmldoc = minidom.parse("default_filter.xml")
+        except (IOError) :
+            output(bcolors.RED + "\n[Error] " + bcolors.ENDC + "Can't read file the PHP-IDS default_filter.xml.\
+                                                               Please get the latest file from https://phpids.org/\
+                                                               and place the XML file in the same directory as this script.\n")
+            sys.exit()
 
-        php_ids_rules[descr_content] = rule_content
+        # Cycle through all the PHP-IDS regexs and make a dictionary
+        if not args.q: output(bcolors.BLUE + "[info] " + bcolors.ENDC + "Opened the PHP-IDS filter file and parsing the rules. ")
+        for filt in xmldoc.getElementsByTagName('filter'):
+            descr_xml = filt.getElementsByTagName('description')[0].toxml()
+            descr_content = descr_xml.replace('<description>','').replace('</description>','')
+            rule_xml = filt.getElementsByTagName('rule')[0].toxml()
+            rule_content = rule_xml.replace('<rule>','').replace('</rule>','')
+            rule_content = rule_content.replace("<![CDATA[", "")
+            rule_content = rule_content.replace("]]>", "")
+
+            try:
+                regex = re.compile(rule_content)
+            except:
+                if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule %s failed. Skipping it." % descr_content)
+                continue
+
+            php_ids_rules[descr_content] = rule_content
 
 
     # Using line 1 - see what kind of log this is
@@ -284,10 +299,12 @@ parser = argparse.ArgumentParser(description='Scan error and access logs for kno
 parser.add_argument('log_file_to_parse', type=file, help='the log file that you want parsed')
 parser.add_argument('-v', action='store_true', default=False, help='Verbose output')
 parser.add_argument('-q', action='store_true', default=False, help='Minimal (Quiet) output')
+parser.add_argument('-p', action='store_true', default=False, help='Use PHP-IDS Regexes (False Positive prone)')
 parser.add_argument('-o', dest='outfile', help='Output file name [DEFAULT: stdout/no file]')
 #TODO - parser.add_argument('-f', dest='out_format', choices='htx', default='t', help='The format you want the output to be in Html, Text, Xml. [DEFAULT: T=human readable color text]')
 args = parser.parse_args()
 
+if args.p: print bcolors.BLUE + "[info] " + bcolors.ENDC + "PHP-IDS Regular Expressions ENABLED. These are buggy and False Positive prone."
 if args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Quiet Mode'....shhh! Only important messages and new IPs/Hosts displayed."
 if args.v: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Verbose Mode'....brace yourself for additional information."
 if args.outfile:
