@@ -147,8 +147,6 @@ def findIt(line, line_counter, search_cat, search_strings):
         http_response = line_regex_split.group(5)
         user_agent    = line_regex_split.group(6)
 
-
-        # Set the spot in the log entry that we want to examine
         if search_cat == 'HTTP Method':
             if http_method not in search_strings:
                 event = [remote_ip,user_agent,event_date,search_cat + ' - ' + http_method,line,line_counter,http_response]
@@ -163,32 +161,29 @@ def findIt(line, line_counter, search_cat, search_strings):
                     event = [remote_ip,user_agent,event_date,search_cat + ' - ' + search_string,line,line_counter,http_response]
                     seen_ip_before(event)
 
-        else:
-            # Look for PHP-IDS matches
-            for id in php_ids_rules.keys():
-                try:
-                    regex = re.compile(php_ids_rules[id])
-                except:
-                    if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule: '%s' failed. Skipping it." % id)
-                    continue
+        # Look for PHP-IDS matches
+        for id in php_ids_rules.keys():
+            # FP rules - #43 Detects classic SQL injection probings 2/2, #23 Detects JavaScript location/document property access and window access obfuscation
+            if (id == 'Detects classic SQL injection probings 2/2') or (id == 'Detects JavaScript location/document property access and window access obfuscation'): continue #Skip False Positive REGEXES
+            try:
+                regex = re.compile(php_ids_rules[id])
+            except:
+                if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule: '%s' failed. Skipping it." % id)
+                continue
 
-                if regex.search(line):
-                    # Add content to the attacker list of dictionaries
-                    event = [remote_ip,user_agent,event_date,'PHP-IDS Rule - ' + id, line, line_counter,http_response]
-                    seen_ip_before(event)
+            if regex.search(line):
+                # Add content to the attacker list of dictionaries
+                event = [remote_ip,user_agent,event_date,'PHP-IDS Rule - ' + id, line, line_counter,http_response]
+                seen_ip_before(event)
 
-            # Look for SYMANTEC_REGEX matches
-            for id in SYMANTEC_REGEX.keys():
-                try:
-                    regex = re.compile(SYMANTEC_REGEX[id])
-                except:
-                    if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling SYMANTEC REGEX rule: '%s' failed. Skipping it." % id)
-                    continue
+        # Look for SYMANTEC_REGEX matches
+        for id in SYMANTEC_REGEX.keys():
+            regex = re.compile(SYMANTEC_REGEX[id])
 
-                if regex.search(line):
-                    # Add content to the attacker list of dictionaries
-                    event = [remote_ip,user_agent,event_date,'SYMANTEC REGEX Rule - ' + id, line, line_counter,http_response]
-                    seen_ip_before(event)
+            if regex.search(line):
+                # Add content to the attacker list of dictionaries
+                event = [remote_ip,user_agent,event_date,'SYMANTEC REGEX Rule - ' + id, line, line_counter,http_response]
+                seen_ip_before(event)
 
 def main():
 
@@ -230,6 +225,7 @@ def main():
             continue
 
         php_ids_rules[descr_content] = rule_content
+
 
     # Using line 1 - see what kind of log this is
     rematch(log_file[0])
