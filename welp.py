@@ -13,11 +13,10 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  1 - Uncolor output going to outfile
  2 - Get XML output working
  3 - Sort the IPs/host names of the events/attackers for output
- 4 - Check to ensure that the PHP-IDS regexes work
+ 4 - Sort the line numbers by integer value not by string
  5 - Add RESTRICTED_EXT to the list of things to test (and see is they work)
- 6 - Check to ensure that the SYMANTEC_REGEX work
  8 - Look for other anomalies such as known bad (RAT) strings (/w00t-w00t...)
- 9 - Do analysis on the IPs found - lookup? Country? maybe use other tool to do this?
+ 9 - Do analysis on the IPs found - lookup? Country? use other tool to do this?
  10- Look at the HTTP response code for success or failure and ignore 300s and 400s
  11- Look at the HTTP response code and count # of each code each IP got (34 500s....)
 '''
@@ -251,6 +250,7 @@ def main():
                 pass
 
         t.join()
+        sys.stdout.flush()
         line_counter += 1
         if not args.q: status_message(int(line_counter),int(len(log_file)))
 
@@ -270,7 +270,7 @@ def main():
             if len(event['ua']) != 0:
                 output(bcolors.GREEN + "   User-Agents:\n\t- %s" % "\n\t- ".join(sorted(event['ua'])))
             output(bcolors.BLUE +      "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(sorted(event['attacks'])))
-            output(bcolors.DARKCYAN +  "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(str(x) for x in event['lines']), 79, 0, 10, ""))
+            output(bcolors.DARKCYAN +  "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(sorted(str(x) for x in event['lines'])), 79, 0, 10, ""))
             output(bcolors.ENDC + "---------------------------------------------------------------")
 
 
