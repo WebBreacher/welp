@@ -14,8 +14,6 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  2 - Get XML output working
  3 - Sort the IPs/host names of the events/attackers for output
  4 - Sort the line numbers by integer value not by string
- 5 - Add RESTRICTED_EXT to the list of things to test (and see is they work)
- 8 - Look for other anomalies such as known bad (RAT) strings (/w00t-w00t...)
  9 - Do analysis on the IPs found - lookup? Country? use other tool to do this?
  10- Look at the HTTP response code for success or failure and ignore 300s and 400s
  11- Look at the HTTP response code and count # of each code each IP got (34 500s....)
@@ -31,7 +29,7 @@ from welpcore import *
 #=================================================
 
 # Pulled from ModSecurity modsecurity_35_scanners.data
-USER_AGENT_STRINGS = [".nasl","absinthe","acunetix", "arachni","bilbo","black widow","blackwidow","brutus","bsqlbf","burp","cgichk","dirbuster","grabber","grendel-scan","havij","hydra","jaascois","metis","mozilla/4.0 (compatible)","mozilla/4.0 (compatible; msie 6.0; win32)","mozilla/5.0 sf//","n-stealth","nessus","netsparker","nikto","nmap nse","nsauditor","pangolin","paros","pmafind","python-httplib2","sql power injector","sqlmap","sqlninja","w3af","webinspect","webtrends security analyzer"]
+USER_AGENT_STRINGS = [".nasl","absinthe","acunetix", "arachni","bilbo","black widow","blackwidow","brutus","bsqlbf","burp","cgichk","dirbuster","grabber","grendel","havij","hydra","jaascois","metis","mozilla/4.0 (compatible)","mozilla/4.0 (compatible; msie 6.0; win32)","mozilla/5.0 sf//","n-stealth","nessus","netsparker","nikto","nmap nse","nsauditor","pangolin","paros","pmafind","python-httplib2","sql power injector","sqlmap","sqlninja","w3af","webinspect","webshag","webtrends security analyzer","whatweb"]
 
 HTTP_METHOD_LIST = ["GET", "POST", "OPTIONS", "HEAD"] #Frequently used HTTP Methods
 
@@ -44,6 +42,13 @@ SYMANTEC_REGEX = {	'SQL Metachars':'/(\%27)|(\')|(\-\-)|(\%23)|(#)/ix',
 					'XSS (typical)':'/((\%3C)|<)((\%2F)|\/)*[a-z0-9\%]+((\%3E)|>)/ix',
 					'XSS (img src)':'/((\%3C)|<)((\%69)|i|(\%49))((\%6D)|m|(\%4D))((\%67)|g|(\%47))[^\n]+((\%3E)|>)/I',
 					'XSS (paranoid)':'/((\%3C)|<)[^\n]+((\%3E)|>)/I'}
+
+# Strings that may be indicative of a certain scanner/tool. Search for the string directly (no regex)
+MISC_TOOLS = {  'waffit scanner': '%3Cinvalid%3Ehello.html',
+                'xsser scanner': '\">',
+                'htexploit scanner': 'POTATO /index.php'
+                }
+
 
 # From ModSecurity Rules
 RESTRICTED_EXT = ['.asa', '.asax', '.ascx', '.axd', '.backup', '.bak', '.bat', '.cdx', '.cer', '.cfg', '.cmd', '.com', '.config', '.conf', '.cs', '.csproj', '.csr', '.dat', '.db', '.dbf', '.dll', '.dos', '.htr', '.htw', '.ida', '.idc', '.idq', '.inc', '.ini', '.key', '.licx', '.lnk', '.log', '.mdb', '.old', '.pass', '.pdb', '.pol', '.printer', '.pwd', '.resources', '.resx', '.sql', '.sys', '.vb', '.vbs', '.vbproj', '.vsdisco', '.webinfo', '.xsd', '.xsx']
@@ -160,8 +165,8 @@ def findIt(line, line_counter, search_cat, search_strings):
             if http_method not in search_strings:
                 event = [remote_ip,user_agent,event_date,search_cat + ' - ' + http_method,line,line_counter,http_response]
                 seen_ip_before(event)
-        elif search_cat == 'User Agent':
-            line = user_agent
+        else:
+            if search_cat == 'User Agent': line = user_agent
 
             # Look for search_strings
             for search_string in search_strings:
@@ -201,7 +206,11 @@ def findIt(line, line_counter, search_cat, search_strings):
 def main():
 
     line_counter = 1          # Counts the lines in the parsed log file
-    tests = { 'User Agent': USER_AGENT_STRINGS, 'HTTP Method': HTTP_METHOD_LIST }
+    tests = {   'User Agent': USER_AGENT_STRINGS,
+                'HTTP Method': HTTP_METHOD_LIST,
+                'Misc Tools': MISC_TOOLS,
+                'Restricted File Extensions': RESTRICTED_EXT
+            }
 
     # Open the log_file (or try to)
     user_log_file = args.log_file_to_parse.name
