@@ -14,6 +14,7 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  2 - Get XML output working
  3 - Sort the IPs/host names of the events/attackers for output
  4 - Sort the line numbers by integer value not by string
+ 5 - Get ModSec regexes working
  9 - Do analysis on the IPs found - lookup? Country? use other tool to do this?
  10- Look at the HTTP response code for success or failure and ignore 300s and 400s
  11- Look at the HTTP response code and count # of each code each IP got (34 500s....)
@@ -42,6 +43,31 @@ SYMANTEC_REGEX = {	'SQL Metachars':'/(\%27)|(\')|(\-\-)|(\%23)|(#)/ix',
 					'XSS (typical)':'/((\%3C)|<)((\%2F)|\/)*[a-z0-9\%]+((\%3E)|>)/ix',
 					'XSS (img src)':'/((\%3C)|<)((\%69)|i|(\%49))((\%6D)|m|(\%4D))((\%67)|g|(\%47))[^\n]+((\%3E)|>)/I',
 					'XSS (paranoid)':'/((\%3C)|<)[^\n]+((\%3E)|>)/I'}
+
+# From ModSecurity modsecurity_crs_41_xss_attacks 11/22/2012
+MODSEC_XSS = [ '.addimport', '.execscript', '.fromcharcode', '.innerhtml', '@import', 'activexobject', 'alert', 'application', 'asfunction:', 'background', 'background-image:', 'bexpression', 'copyparentfolder', 'createtextrange', 'document', 'ecmascript', 'getparentfolder', 'getspecialfolder', 'iframe', 'javascript', 'jscript', 'livescript:', 'lowsrc', 'meta', 'mocha:', 'onabort', 'onblur', 'onchange', 'onclick', 'ondragdrop', 'onerror', 'onfocus', 'onkeydown', 'onkeypress', 'onkeyup', 'onmousedown', 'onmousemove', 'onmouseout', 'onmouseover', 'onmouseup', 'onmove', 'onresize', 'onselect', 'onsubmit', 'onunload', 'script', 'settimeout', 'shell:', 'vbscript', 'vbscript:', 'x-javascript' ]
+
+#TODO compile these like SYMANTEC
+MODSEC_XSS_REGEX = ['/:<style.*?>.*?((@[i\\\\])|(([:=]|(&[#\(\)=]x?0*((58)|(3A)|(61)|(3D));?)).*?([(\\\\]|(&[#()=]x?0*((40)|(28)|(92)|(5C));?))))/i',
+                    '/:[ /+\t\"\'`]style[ /+\t]*?=.*?([:=]|(&[#()=]x?0*((58)|(3A)|(61)|(3D));?)).*?([(\\\\]|(&[#()=]x?0*((40)|(28)|(92)|(5C));?))/i',
+					'/:<object[ /+\t].*?((type)|(codetype)|(classid)|(code)|(data))[ /+\t]*=/i',
+					'/:<applet[ /+\t].*?code[ /+\t]*=/i',
+					'/:[ /+\t\"\'`]datasrc[ +\t]*?=./i',
+					'/:<(base|link)[ /+\t].*?href[ /+\t]*=/i',
+					'/:<meta[ /+\t].*?http-equiv[ /+\t]*=/i',
+					'/:<\?import[ /+\t].*?implementation[ /+\t]*=/i',
+					'/:<embed[ /+\t].*?SRC.*?=/i',
+					'/:[ /+\t\"\'`]on\c\c\c+?[ +\t]*?=./i',
+					'/:<.*[:]vmlframe.*?[ /+\t]*?src[ /+\t]*=/i',
+					'/:<[i]?frame.*?[ /+\t]*?src[ /+\t]*=/i',
+					'/:<isindex[ /+\t>]/i',
+					'/:<form.*?>/i',
+					'/:<script.*?[ /+\t]*?src[ /+\t]*=/i',
+					'/:<script.*?>/i',
+					'/:[\"\'][ ]*(([^a-z0-9~_:\'\" ])|(in)).*?(((l|(\\\\u006C))(o|(\\\\u006F))(c|(\\\\u0063))(a|(\\\\u0061))(t|(\\\\u0074))(i|(\\\\u0069))(o|(\\\\u006F))(n|(\\\\u006E)))|((n|(\\\\u006E))(a|(\\\\u0061))(m|(\\\\u006D))(e|(\\\\u0065)))).*?=/i',
+					'/:[\"\'][ ]*(([^a-z0-9~_:\'\" ])|(in)).+?(([.].+?)|([\[].*?[\]].*?))=/i',
+					'/:[\"\'].*?\[ ]*(([^a-z0-9~_:\'\" ])|(in)).+?\(/i',
+					'/:[\"\'][ ]*(([^a-z0-9~_:\'\" ])|(in)).+?\(.*?\)/i' ]
 
 # Strings that may be indicative of a certain scanner/tool. Search for the string directly (no regex)
 MISC_TOOLS = {  'waffit scanner': '%3Cinvalid%3Ehello.html',
@@ -199,9 +225,20 @@ def findIt(line, line_counter, search_cat, search_strings):
             regex = re.compile(SYMANTEC_REGEX[id])
 
             if regex.search(line):
-                # Add content to the attacker list of dictionaries
                 event = [remote_ip,user_agent,event_date,'SYMANTEC REGEX Rule - ' + id, line, line_counter,http_response]
                 seen_ip_before(event)
+
+        if args.m:
+            # Look for MODSEC_REGEX matches
+            count = 1
+            # TODO - This doesn't seem to be working. I think the regexes are not right.
+            for rule in MODSEC_XSS_REGEX:
+                regex = re.compile(rule)
+
+                if regex.search(line):
+                    event = [remote_ip,user_agent,event_date,'ModSecurity XSS REGEX Rule #' + count, line, line_counter,http_response]
+                    seen_ip_before(event)
+                count += 1
 
 def main():
 
@@ -212,6 +249,9 @@ def main():
                 'Misc Tools': MISC_TOOLS,
                 'Restricted File Extensions': RESTRICTED_EXT
             }
+
+    if args.m:
+        tests = {   'ModSecurity XSS Strings': MODSEC_XSS }
 
     # Open the log_file (or try to)
     user_log_file = args.log_file_to_parse.name
@@ -307,11 +347,12 @@ print bcolors.GREEN + "\n[Start] " + bcolors.CYAN + "Starting the WELP script. H
 # Command Line Arguments
 parser = argparse.ArgumentParser(description='Scan error and access logs for known traces of scanners and then grab stats')
 parser.add_argument('log_file_to_parse', type=file, help='the log file that you want parsed')
-parser.add_argument('-v', action='store_true', default=False, help='Verbose output')
+parser.add_argument('-l', action='store_true', default=False, help='[DEFAULT: off] Show line numbers in final output (WARNING: There could be a LOT if your system had a scanner run against it.)')
+parser.add_argument('-m', action='store_true', default=True, help='[DEFAULT: on] Disable ModSecurity Strings and REGEX searches')
+parser.add_argument('-o', dest='outfile', help='[DEFAULT: stdout/no file] Output file name')
+parser.add_argument('-p', action='store_true', default=False, help='[DEFAULT: off] Enable PHP-IDS Regexes (False Positive prone)')
 parser.add_argument('-q', action='store_true', default=False, help='Minimal (Quiet) output')
-parser.add_argument('-p', action='store_true', default=False, help='Use PHP-IDS Regexes (False Positive prone)')
-parser.add_argument('-l', action='store_true', default=False, help='Show line numbers in final output (warning...could be a LOT if scanner run.)')
-parser.add_argument('-o', dest='outfile', help='Output file name [DEFAULT: stdout/no file]')
+parser.add_argument('-v', action='store_true', default=False, help='Verbose output')
 #TODO - parser.add_argument('-f', dest='out_format', choices='htx', default='t', help='The format you want the output to be in Html, Text, Xml. [DEFAULT: T=human readable color text]')
 args = parser.parse_args()
 
