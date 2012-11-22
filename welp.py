@@ -77,14 +77,14 @@ def rematch(line):      # Determine log type and set name/regex
         log['type']="Apache2 Access"
         # REGEX - 1=IP/domain, 2=Date/Time of the activity, 3=HTTP Method, 4=URL Requested, 5=HTTP Response Code, 6=User Agent
         # Find specific format of Apache Log
-        m = re.match('^.+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} .* HTTP.+" \d{3} .+ ".*" ".*"', line)
+        m = re.match('^.+\..+ .+ \[\d+.+ \-\d+\] "[A-Za-z]+ .* [A-Z].+" \d{3} .+ ".*" ".*"', line)
         if m:
-            log['regex'] = '^(.+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" (\d{3}) .+ ".*" "(.*)"'
+            log['regex'] = '^(.+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "(.+) (.+) [A-Z].+" (\d{3}) .+ ".*" "(.*)"'
             return
 
-        m = re.match('^.+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} \/.* HTTP.+" \d{3} .+ .+ ".+" ".+" ".+"', line)
+        m = re.match('^.+\..+ .+ \[\d+.+ \-\d+\] "[A-Z]{1,11} \/.* [A-Z].+" \d{3} .+ .+ ".+" ".+" ".+"', line)
         if m:
-            log['regex'] = '^(.+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "([A-Z]{1,11}) (\/.*) HTTP.+" (\d{3}) .+ .+ ".*" "(.+)" ".*"'
+            log['regex'] = '^(.+\.[^\s]+) .+ \[(\d+.+) \-\d+\] "(.+) (.+) [A-Z].+" (\d{3}) .+ .+ ".*" "(.+)" ".*"'
             return
 
     # If we have not returned already, there is no match. Exit
@@ -100,7 +100,7 @@ def seen_ip_before(event):
 
     for actor in attacker:
         if event[0] in actor['ip']:
-            if not args.q: output(bcolors.YELLOW + "[Found] Additional activity for " + bcolors.ENDC + "%s; Line# %d." % (event[0],event[5]))
+            if not args.q and args.v: output(bcolors.YELLOW + "[Found] Additional activity for " + bcolors.ENDC + "%s; Line# %d." % (event[0],event[5]))
             if len(event[1]) > 1: actor['ua'].add(event[1])
             tt = datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")
             actor['date_all'].add(tt)
@@ -148,7 +148,7 @@ def findIt(line, line_counter, search_cat, search_strings):
 
     # Some lines in the log we don't care about (notice, info...). So if we have no regex match discard those lines
     if line_regex_split == None:
-        output(bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Skipping it." % line_counter)
+        if args.v: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Skipping it." % line_counter)
         return
 
     if log['type'] == "Apache2 Access":
@@ -206,6 +206,7 @@ def findIt(line, line_counter, search_cat, search_strings):
 def main():
 
     line_counter = 1          # Counts the lines in the parsed log file
+    # ENABLE things to search for here.
     tests = {   'User Agent': USER_AGENT_STRINGS,
                 'HTTP Method': HTTP_METHOD_LIST,
                 'Misc Tools': MISC_TOOLS,
@@ -294,7 +295,7 @@ def main():
             if len(event['ua']) != 0:
                 output(bcolors.GREEN + "   User-Agents:\n\t- %s" % "\n\t- ".join(sorted(event['ua'])))
             output(bcolors.BLUE +      "   All Attacks Seen:\n\t- %s" % "\n\t- ".join(sorted(event['attacks'])))
-            output(bcolors.DARKCYAN +  "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(sorted(str(x) for x in event['lines'])), 79, 0, 10, ""))
+            if args.l: output(bcolors.DARKCYAN +  "   Line Numbers Where Attacks were Seen:\n\t- %s" % word_wrap(", ".join(sorted(str(x) for x in event['lines'])), 79, 0, 10, ""))
             output(bcolors.ENDC + "---------------------------------------------------------------")
 
 
@@ -309,13 +310,18 @@ parser.add_argument('log_file_to_parse', type=file, help='the log file that you 
 parser.add_argument('-v', action='store_true', default=False, help='Verbose output')
 parser.add_argument('-q', action='store_true', default=False, help='Minimal (Quiet) output')
 parser.add_argument('-p', action='store_true', default=False, help='Use PHP-IDS Regexes (False Positive prone)')
+parser.add_argument('-l', action='store_true', default=False, help='Show line numbers in final output (warning...could be a LOT if scanner run.)')
 parser.add_argument('-o', dest='outfile', help='Output file name [DEFAULT: stdout/no file]')
 #TODO - parser.add_argument('-f', dest='out_format', choices='htx', default='t', help='The format you want the output to be in Html, Text, Xml. [DEFAULT: T=human readable color text]')
 args = parser.parse_args()
 
 if args.p: print bcolors.BLUE + "[info] " + bcolors.ENDC + "PHP-IDS Regular Expressions ENABLED. These are buggy and False Positive prone."
 if args.q: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Quiet Mode'....shhh! Only important messages and new IPs/Hosts displayed."
-if args.v: print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Verbose Mode'....brace yourself for additional information."
+if args.v:
+    print bcolors.BLUE + "[info] " + bcolors.ENDC + "Entering 'Verbose Mode'....brace yourself for additional information."
+else:
+    print bcolors.BLUE + "[info] " + bcolors.ENDC + "Maintaining 'Normal Mode'. We'll only show you errors and new hosts. Additional host events only shown in VERBOSE mode."
+
 if args.outfile:
     out_file = open(args.outfile, 'w')
     print bcolors.BLUE + "[info] " + bcolors.ENDC + "Saving all further output to %s" % args.outfile
