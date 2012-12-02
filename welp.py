@@ -71,8 +71,6 @@ def rematch(line):      # Determine log type and set name/regex
 def seen_ip_before(event):
     # Apache Access = 0=remote_ip,1=user_agent,2=event_date,3=search_cat,4=attack,5=line,6=line#,7=http response
     attack = event[3] + " - " + event[4]
-    print event[3] + " - " + event[4]
-
 
     # Grab just the needed parts of Nikto UA
     is_ua_nikto = re.search("\((Nikto/[0-9]\.[0-9]\.[0-9])\)", event[1])
@@ -106,7 +104,7 @@ def seen_ip_before(event):
                          'date_recent':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
                          'date_all':set([datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")]),\
                          'attacks':set([attack]),\
-                         'lines':set([event[5]])\
+                         'lines':set([event[6]])\
                          })
     else:
         attacker.append({'ip': event[0],\
@@ -115,7 +113,7 @@ def seen_ip_before(event):
                          'date_recent':datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S"),\
                          'date_all':set([datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")]),\
                          'attacks':set([attack]),\
-                         'lines':set([event[5]])\
+                         'lines':set([event[6]])\
                          })
 
     if args.v:
@@ -221,9 +219,10 @@ def main():
                 'Restricted File Extensions': strings_and_regexes.RESTRICTED_EXT
             }
 
-    if args.m:
-        tests['ModSecurity XSS Strings'] = strings_and_regexes.MODSEC_XSS
-        tests['ModSecurity SQLi Strings'] = strings_and_regexes.MODSEC_SQLI
+    # TODO - These have too many False positives to be useful right now
+    #if args.m:
+     #   tests['ModSecurity XSS Strings'] = strings_and_regexes.MODSEC_XSS
+      #  tests['ModSecurity SQLi Strings'] = strings_and_regexes.MODSEC_SQLI
 
     # Open the log_file (or try to)
     user_log_file = args.log_file_to_parse.name
