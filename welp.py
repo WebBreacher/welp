@@ -14,7 +14,7 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  2 - Get XML output working
  3 - Sort the IPs/host names of the events/attackers for output
  4 - Sort the line numbers by integer value not by string
- 5 - Get ModSec regexes working
+ 5 - Fix the MODSEC_SQLI_REGEXs
  6 - Redo output so that all strings for each cat are on a single line (File Exts - 1, 2, 3, 4, ...)
  7 - For ModSecurity strings, only look at the requested file/path/args not UA
  9 - Do analysis on the IPs found - lookup? Country? use other tool to do this?
@@ -70,7 +70,7 @@ def rematch(line):      # Determine log type and set name/regex
 
 def seen_ip_before(event):
     # Apache Access = 0=remote_ip,1=user_agent,2=event_date,3=search_cat,4=attack,5=line,6=line#,7=http response
-    attack = event[3] + " - " + event[4]
+    attack = event[3] + " - " + str(event[4])
 
     # Grab just the needed parts of Nikto UA
     is_ua_nikto = re.search("\((Nikto/[0-9]\.[0-9]\.[0-9])\)", event[1])
@@ -138,6 +138,11 @@ def findIt(line, line_counter, search_cat, search_strings):
         http_response = line_regex_split.group(5)
         user_agent    = line_regex_split.group(6)
 
+        has_params = False
+        if re.search('\?', url_requested):
+            has_params = True
+            url_pieces = url_requested.split('?') #Split the url_requested into the dir/file [0] and the params [1]
+
         # If the user only wants 2xx HTTP response codes, and this is higher, don't examine the line
         if args.s and int(http_response) > 299:
             return
@@ -148,18 +153,22 @@ def findIt(line, line_counter, search_cat, search_strings):
                 seen_ip_before(event)
         else:
             if search_cat == 'User Agents': line = user_agent
-            if search_cat == 'ModSecurity XSS Strings' or \
-               search_cat == 'ModSecurity SQLi Strings' or \
-               search_cat == 'Restricted File Extensions': line = url_requested
+            if search_cat == 'ModSecurity XSS Strings' or search_cat == 'ModSecurity SQLi Strings':
+                if has_params: line = url_pieces[1]
+                else: return
+            if search_cat == 'Restricted File Extensions':
+                if has_params: line = url_pieces[0]
+                else: return
 
-            # Look for search_strings
-            for search_string in search_strings:
-                if re.search(search_string, line, re.I):
-                    event = [remote_ip,user_agent,event_date,search_cat,search_string,line,line_counter,http_response]
-                    seen_ip_before(event)
+            if len(line) > 3:
+                # Look for search_strings
+                for search_string in search_strings:
+                    if re.search(search_string, line, re.I):
+                        event = [remote_ip,user_agent,event_date,search_cat,search_string,line,line_counter,http_response]
+                        seen_ip_before(event)
 
         # Look for PHP-IDS matches
-        if args.p:
+        if args.p and has_params:
             for id in php_ids_rules.keys():
                 ''' FP rules:
                        #43 Detects classic SQL injection probings 2/2,
@@ -174,40 +183,34 @@ def findIt(line, line_counter, search_cat, search_strings):
                     if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule: '%s' failed. Skipping it." % id)
                     continue
 
-                if regex.search(line):
+                if regex.search(url_pieces[1]):
                     # Add content to the attacker list of dictionaries
                     event = [remote_ip,user_agent,event_date,'PHP-IDS Rule',id, line, line_counter,http_response]
                     seen_ip_before(event)
 
-        # Look for SYMANTEC_REGEX matches
-        for id in strings_and_regexes.SYMANTEC_REGEX.keys():
-            regex = re.compile(strings_and_regexes.SYMANTEC_REGEX[id])
-
-            if regex.search(line):
-                event = [remote_ip,user_agent,event_date,'SYMANTEC REGEX Rule', id, line, line_counter,http_response]
-                seen_ip_before(event)
-
-        if args.m:
-            # Look for MODSEC_REGEX matches
-            count = 1
-            # TODO - This doesn't seem to be working. I think the regexes are not right.
-            for rule in strings_and_regexes.MODSEC_XSS_REGEX:
-                regex = re.compile(rule)
-
-                if regex.search(line):
-                    event = [remote_ip,user_agent,event_date,'ModSecurity XSS REGEX Rule #', count, line, line_counter,http_response]
+        if has_params:
+            # Look for SYMANTEC_REGEX matches
+            for id in strings_and_regexes.SYMANTEC_REGEX.keys():
+                regex = re.search(strings_and_regexes.SYMANTEC_REGEX[id], url_pieces[1], re.I)
+                if regex:
+                    event = [remote_ip,user_agent,event_date,'SYMANTEC REGEX Rule', id, url_pieces[1], line_counter,http_response]
                     seen_ip_before(event)
-                count += 1
 
-            count = 1
-            # TODO - This doesn't seem to be working. I think the regexes are not right.
-            for rule in strings_and_regexes.MODSEC_SQLI_REGEX:
-                regex = re.compile(rule)
+            if args.m:
+                # Look for MODSEC_REGEX matches
+                for id in strings_and_regexes.MODSEC_XSS_REGEX.keys():
+                    regex = re.search(strings_and_regexes.MODSEC_XSS_REGEX[id], url_pieces[1], re.I)
+                    if regex:
+                        event = [remote_ip,user_agent,event_date,'ModSecurity XSS Regex', id, url_pieces[1], line_counter,http_response]
+                        seen_ip_before(event)
 
-                if regex.search(line):
-                    event = [remote_ip,user_agent,event_date,'ModSecurity SQLI REGEX Rule #', count, line, line_counter,http_response]
-                    seen_ip_before(event)
-                count += 1
+                # TODO - Fix the MODSEC_SQLI_REGEXs
+                #count = 1
+                #for id in strings_and_regexes.MODSEC_SQLI_REGEX.keys():
+                #    regex = re.search(strings_and_regexes.MODSEC_SQLI_REGEX[id], url_pieces[1], re.I)
+                #    if regex:
+                #        event = [remote_ip,user_agent,event_date,'ModSecurity SQLI Regex', id, url_pieces[1], line_counter,http_response]
+                #        seen_ip_before(event)'''
 
 def main():
 
@@ -219,10 +222,9 @@ def main():
                 'Restricted File Extensions': strings_and_regexes.RESTRICTED_EXT
             }
 
-    # TODO - These have too many False positives to be useful right now
-    #if args.m:
-     #   tests['ModSecurity XSS Strings'] = strings_and_regexes.MODSEC_XSS
-      #  tests['ModSecurity SQLi Strings'] = strings_and_regexes.MODSEC_SQLI
+    if args.m:
+        tests['ModSecurity XSS Strings'] = strings_and_regexes.MODSEC_XSS
+        tests['ModSecurity SQLi Strings'] = strings_and_regexes.MODSEC_SQLI
 
     # Open the log_file (or try to)
     user_log_file = args.log_file_to_parse.name
