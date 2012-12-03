@@ -17,6 +17,7 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  5 - Fix the MODSEC_SQLI_REGEXs
  6 - Redo output so that all strings for each cat are on a single line (File Exts - 1, 2, 3, 4, ...)
  7 - For ModSecurity strings, only look at the requested file/path/args not UA
+ 8 - Do confidence for findings: if >2 searches came up with XSS in same line....then confident
  9 - Do analysis on the IPs found - lookup? Country? use other tool to do this?
 '''
 
@@ -138,14 +139,15 @@ def findIt(line, line_counter, search_cat, search_strings):
         http_response = line_regex_split.group(5)
         user_agent    = line_regex_split.group(6)
 
+        # If the user only wants 2xx HTTP response codes, and this is higher, don't examine the line
+        if args.s and int(http_response) > 299:
+            return
+
+        # Does the entered URL have parameters on it?
         has_params = False
         if re.search('\?', url_requested):
             has_params = True
             url_pieces = url_requested.split('?') #Split the url_requested into the dir/file [0] and the params [1]
-
-        # If the user only wants 2xx HTTP response codes, and this is higher, don't examine the line
-        if args.s and int(http_response) > 299:
-            return
 
         if search_cat == 'HTTP Methods':
             if http_method not in search_strings:
@@ -160,6 +162,7 @@ def findIt(line, line_counter, search_cat, search_strings):
                 if has_params: line = url_pieces[0]
                 else: return
 
+            # Is there any string to search? Thinking empty UserAgent
             if len(line) > 3:
                 # Look for search_strings
                 for search_string in search_strings:
@@ -167,28 +170,28 @@ def findIt(line, line_counter, search_cat, search_strings):
                         event = [remote_ip,user_agent,event_date,search_cat,search_string,line,line_counter,http_response]
                         seen_ip_before(event)
 
-        # Look for PHP-IDS matches
-        if args.p and has_params:
-            for id in php_ids_rules.keys():
-                ''' FP rules:
-                       #43 Detects classic SQL injection probings 2/2,
-                       #23 Detects JavaScript location/document property access and window access obfuscation'''
-
-                if (id == 'Detects classic SQL injection probings 2/2') or\
-                   (id == 'Detects JavaScript location/document property access and window access obfuscation'):
-                   continue #Skip False Positive REGEXES
-                try:
-                    regex = re.compile(php_ids_rules[id])
-                except:
-                    if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule: '%s' failed. Skipping it." % id)
-                    continue
-
-                if regex.search(url_pieces[1]):
-                    # Add content to the attacker list of dictionaries
-                    event = [remote_ip,user_agent,event_date,'PHP-IDS Rule',id, line, line_counter,http_response]
-                    seen_ip_before(event)
-
         if has_params:
+            if args.p:
+                # Look for PHP-IDS matches
+                for id in php_ids_rules.keys():
+                    ''' FP rules:
+                           #43 Detects classic SQL injection probings 2/2,
+                           #23 Detects JavaScript location/document property access and window access obfuscation'''
+
+                    if (id == 'Detects classic SQL injection probings 2/2') or\
+                       (id == 'Detects JavaScript location/document property access and window access obfuscation'):
+                       continue #Skip False Positive REGEXES
+                    try:
+                        regex = re.compile(php_ids_rules[id])
+                    except:
+                        if not args.q: output(bcolors.RED + "[Error] " + bcolors.ENDC + "Compiling PHP-IDS rule: '%s' failed. Skipping it." % id)
+                        continue
+
+                    if regex.search(url_pieces[1]):
+                        # Add content to the attacker list of dictionaries
+                        event = [remote_ip,user_agent,event_date,'PHP-IDS Rule',id, line, line_counter,http_response]
+                        seen_ip_before(event)
+
             # Look for SYMANTEC_REGEX matches
             for id in strings_and_regexes.SYMANTEC_REGEX.keys():
                 regex = re.search(strings_and_regexes.SYMANTEC_REGEX[id], url_pieces[1], re.I)
