@@ -382,7 +382,7 @@ def main():
 print bcolors.GREEN + "\n[Start] " + bcolors.CYAN + "Starting the WELP script. Hang on." + bcolors.ENDC
 
 # Command Line Arguments
-parser = argparse.ArgumentParser(description='Scan Apache access logs for known traces of scanners and attack')
+parser = argparse.ArgumentParser(description='Scan Apache access and IIS logs for known traces of scanners and attack')
 parser.add_argument('log_file_to_parse', type=file, help='the log file that you want parsed')
 parser.add_argument('-l', action='store_true', default=False, help='Show line numbers in final output (WARNING: There could be a LOT if your system had a scanner run against it.) [DEFAULT: off]')
 parser.add_argument('-m', action='store_true', default=True, help='Disable ModSecurity Strings and REGEX searches [DEFAULT: on]')
