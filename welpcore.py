@@ -188,11 +188,14 @@ class strings_and_regexes:
 					     'Unicode': '(([^a-z0-9~_:\'\"\b])|(in)).*?(((l|(\\\\u006C))(o|(\\\\u006F))(c|(\\\\u0063))(a|(\\\\u0061))(t|(\\\\u0074))(i|(\\\\u0069))(o|(\\\\u006F))(n|(\\\\u006E)))|((n|(\\\\u006E))(a|(\\\\u0061))(m|(\\\\u006D))(e|(\\\\u0065)))).*?='}
 
     # Strings that may be indicative of a certain scanner/tool. Search for the string directly (no regex)
-    MISC_TOOLS = {  'waffit scanner': '%3Cinvalid%3Ehello.html',
-                    'xsser scanner': '\">',
+    MISC_TOOLS = {  'waffit scanner':    '%3Cinvalid%3Ehello.html',
+                    'xsser scanner':     '\">',
                     'htexploit scanner': 'POTATO /index.php'
                     }
 
+    MISC_STRINGS = { 'Directory Traversal1': '../../',
+                     '*nix Password File Request': 'etc/passwd'
+                   }
 
     # From ModSecurity Rules
     RESTRICTED_EXT = ['\.asa', '\.asax', '\.ascx', '\.axd', '\.backup', '\.bak', '\.bat', '\.cdx', '\.cer', '\.cfg', '\.cmd', '\.com', '\.config', '\.conf',  '\.csproj', '\.csr', '\.dat', '\.db', '\.dbf', '\.dll', '\.dos', '\.htr', '\.htw', '\.ida', '\.idc', '\.idq', '\.inc', '\.ini', '\.key', '\.licx', '\.lnk', '\.log', '\.mdb', '\.old', '\.pass', '\.pdb', '\.pol', '\.printer', '\.pwd', '\.resources', '\.resx', '\.sql', '\.sys', '\.vb', '\.vbs', '\.vbproj', '\.vsdisco', '\.webinfo', '\.xsd', '\.xsx']
