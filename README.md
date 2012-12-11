@@ -8,7 +8,7 @@ So you are running a web server on the Interwebs and wanna know if/who has been 
    - All the attacks that PHP-IDS looks for in the default-filters.xml file (this file required during run-time)</ul>
 
 There are some caveats for using WELP:<br>
-   - Right now it only works for Apache 2.x access.logs.<br>
+   - Right now it only works for Apache 2.x access and IIS 7.5 logs.<br>
    - This will only see HTTP GET request parameters. POSTS and other methods will not be seen in the logs.<br>
 
 This script is my first real python script so suggestions for improvement are welcome.<br>
@@ -19,7 +19,7 @@ This script is my first real python script so suggestions for improvement are we
 <pre>
 welp.py [-h] [-l] [-m] [-o OUTFILE] [-p] [-q] [-s] [-v] log_file_to_parse
 
-Scan Apache access logs for known traces of scanners and attack
+Scan Apache access and IIS logs for known traces of scanners and attack
 
 positional arguments:
     log_file_to_parse  the log file that you want parsed
