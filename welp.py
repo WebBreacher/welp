@@ -16,9 +16,10 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  4 - Sort the line numbers by integer value not by string
  5 - Fix the MODSEC_SQLI_REGEXs
  6 - Redo output so that all strings for each cat are on a single line (File Exts - 1, 2, 3, 4, ...)
- 7 - For ModSecurity strings, only look at the requested file/path/args not UA
- 8 - Do confidence for findings: if >2 searches came up with XSS in same line....then confident
  9 - Do analysis on the IPs found - lookup? Country? use other tool to do this?
+ 10 - Create run time error log for lines that don't match regex #novahackers
+ 11 - Parse "exclude" file for strings to ignore - known good #novahackers
+ 12 - Could I do a time-based analysis of hits to say "tool" v "human"? #novahackers
 '''
 
 import os, sys, re, itertools, operator, signal, threading, argparse
