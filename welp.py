@@ -1,4 +1,4 @@
-#!/usr/bin/python -tt
+﻿#!/usr/bin/python -tt
 '''
 -------------------------------------------------------------------------------
 Name:        WELP - Web Event Log Processor
@@ -77,6 +77,15 @@ def rematch(line):      # Determine log type and set name/regex
         if not args.q: output(bcolors.BLUE + "[info] " + bcolors.ENDC + "Log format found to be %s" % log['type'])
         return
 
+    match = re.match("^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d .+? .+? \d+\.\d+\.\d+\.\d+ \/.* .+? \d+\.\d+\.\d+\.\d+ .+? .+? .+? \d+ \d+ \d+ \d+", line)
+    if match:
+        log['type']="IIS 6.0"
+        # Fields: date time s-ip cs-method cs-uri-stem cs-uri-query s-port cs-username c-ip cs(User-Agent) sc-status sc-substatus sc-win32-status time-taken
+        # REGEX - 1=Date/Time of the activity, 2=There is NO HTTP Method, 3=URL Requested, 4=IP/domain, 5=User Agent, 6=HTTP Response Code
+        # Find specific format of IIS Log
+        log['regex'] = '^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) .+? .+? \d+\.\d+\.\d+\.\d+( )(\/.*) .+? (\d+\.\d+\.\d+\.\d+) (.+?) .+? .+? (\d+) \d+ \d+ \d+'
+        if not args.q: output(bcolors.BLUE + "[info] " + bcolors.ENDC + "Log format found to be %s" % log['type'])
+        return
     # If we have not returned already, there is no match. Exit
     output(bcolors.RED + "\n[Error] " + bcolors.ENDC + "No idea what kinda log you just submitted. Right now we only work on Apache 2.x access and IIS 7.5 logs.")
     sys.exit()
@@ -97,7 +106,7 @@ def seen_ip_before(event):
             # We need to transform the date
             if log['type'] == 'Apache2 Access':
                 tt = datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")
-            elif log['type'] == 'IIS 7.5':
+            elif log['type'] == 'IIS 7.5' or log['type'] == 'IIS 6.0':
                 tt = datetime.strptime(event[2], "%Y-%m-%d %H:%M:%S")
             actor['date_all'].add(tt)
             actor['attacks'].add(attack) # TODO figure out how to get the single attack cat with a set of events
@@ -117,7 +126,7 @@ def seen_ip_before(event):
     # We need to transform the date
     if log['type'] == 'Apache2 Access':
         tt = datetime.strptime(event[2], "%d/%b/%Y:%H:%M:%S")
-    elif log['type'] == 'IIS 7.5':
+    elif log['type'] == 'IIS 7.5' or log['type'] == 'IIS 6.0':
         tt = datetime.strptime(event[2], "%Y-%m-%d %H:%M:%S")
 
     if len(event[1]) > 1:
@@ -160,9 +169,16 @@ def findIt(line, line_counter, search_cat, search_strings):
         url_requested = line_regex_split.group(4)
         http_response = line_regex_split.group(5)
         user_agent    = line_regex_split.group(6)
-    elif log['type'] =="IIS 7.5":
+    elif log['type']=="IIS 7.5":
         event_date     = line_regex_split.group(1)
         http_method    = line_regex_split.group(2)
+        url_requested  = line_regex_split.group(3)
+        remote_ip      = line_regex_split.group(4)
+        user_agent     = line_regex_split.group(5)
+        http_response  = line_regex_split.group(6)
+    elif log['type']=='IIS 6.0':
+        event_date     = line_regex_split.group(1)
+        http_method    = False
         url_requested  = line_regex_split.group(3)
         remote_ip      = line_regex_split.group(4)
         user_agent     = line_regex_split.group(5)
@@ -185,7 +201,7 @@ def findIt(line, line_counter, search_cat, search_strings):
         url_pieces = url_requested.split('?') #Split the url_requested into the dir/file [0] and the params [1]
 
     if search_cat == 'HTTP Methods':
-        if http_method not in search_strings:
+        if http_method and http_method not in search_strings:
             event = [remote_ip,user_agent,event_date,search_cat,http_method,line,line_counter,http_response]
             seen_ip_before(event)
     else:
@@ -324,7 +340,7 @@ def main():
         signal.signal(signal.SIGINT, signal_handler)    # Trap Ctrl-C
 
         # Ignore lines starting with a #
-        if re.match('^#', line):
+        if not line.startswith("20"):
             line_counter += 1
             continue
 
