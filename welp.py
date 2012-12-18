@@ -17,7 +17,6 @@ Usage: $ python welp.py [apache_log_fileto_parse]
  5 - Fix the MODSEC_SQLI_REGEXs
  6 - Redo output so that all strings for each cat are on a single line (File Exts - 1, 2, 3, 4, ...)
  9 - Do analysis on the IPs found - lookup? Country? use other tool to do this? 
- 10 - Create run time error log for lines that don't match regex #novahackers
  11 - Parse "exclude" file for strings to ignore - known good #novahackers
  12 - Could I do a time-based analysis of hits to say "tool" v "human"? #novahackers
 '''
@@ -283,6 +282,8 @@ def main():
 
     line_counter = 1          # Counts the lines in the parsed log file
     log['type'] = ''
+    error_file = open("welp_error", 'a')
+    error_file.write("------------------------- New run --------------------------\n")
 
     # ENABLE things to search for here.
     tests = {   'User Agents': strings_and_regexes.USER_AGENT_STRINGS,
@@ -347,12 +348,13 @@ def main():
         # Figure out what type of log format this is
         if (log['type'] == ''): rematch(line)
 
-        # Some lines in the log we don't care about (notice, info...). So if we have no regex match discard those lines
+        # Some lines in the log we don't care about (notice, info...). So if we have no regex match discard those lines and log them
         line_regex_split = re.search(log['regex'], line)
         if line_regex_split == None:
             # TODO - Output this "line" to an error file
-            output(bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Skipping it." % line_counter)
+            output(bcolors.RED + "[Error] " + bcolors.ENDC + "Line# %d didn't match log REGEX. Logging and skipping it." % line_counter)
             if args.v: output(bcolors.DARKCYAN + "  [verbose] Line: " + bcolors.ENDC + "%s" % line)
+            error_file.write(str(line_counter) + ": " + line)
             t.join()
             sys.stdout.flush()
             line_counter += 1
@@ -379,6 +381,7 @@ def main():
 
     elif len(attacker) > 0:
         output(bcolors.GREEN + "\n-+-+- Found the following hosts (and associated activity) -+-+-\n" + bcolors.ENDC)
+        output(bcolors.GREEN + "Any log errors can be found in the welp_error log." + bcolors.ENDC)
 
         #TODO - attacker.sort(key=operator.itemgetter('string'))
         for event in attacker:
