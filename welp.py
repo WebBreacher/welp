@@ -5,13 +5,13 @@ Name:        WELP - Web Event Log Processor
 Purpose:     Scan access logs for known traces of scanners/attack
 Author:      Micah Hoffman (@WebBreacher)
 
-Requirements: PHP-IDS default_filters.xml file, welpcore.py helper file.
+Requirements: welpcore.py helper file
+Optional:     PHP-IDS default_filters.xml file
 
 Usage: $ python welp.py [apache_log_fileto_parse]
 -------------------------------------------------------------------------------
  TODO (Overall)
  1 - Uncolor output going to outfile
- 2 - Get XML output working
  3 - Sort the IPs/host names of the events/attackers for output
  4 - Sort the line numbers by integer value not by string
  5 - Fix the MODSEC_SQLI_REGEXs
