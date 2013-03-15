@@ -39,13 +39,13 @@ optional arguments:
 
 123.hsd1.va.comcast.net :
    Earliest Date Seen:   2012-10-01 00:17:16
-   Earliest Recent Seen: 2012-10-01 00:17:16
+   Most Recent Seen:     2012-10-01 00:17:16
    All Attacks Seen:
    - HTTP Methods - POTATO
 ---------------------------------------------------------------
 homeuser.example.com :
    Earliest Date Seen:   2012-10-01 03:59:55
-   Earliest Recent Seen: 2012-12-01 04:15:10
+   Most Recent Seen:     2012-12-01 04:15:10
    All Attacks Seen:
 	- HTTP Methods - TRACE
 	- HTTP Methods - TRACK
